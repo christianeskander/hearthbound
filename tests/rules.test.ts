@@ -193,6 +193,7 @@ describe('bosses', () => {
     const rep = dayTurn(s, T(2026, 10, 23, 9))!;
     expect(rep.bossHits).toBe(1);
     s.quest!.hp = 1;
+    s.season.got = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]; // keep season-track gold out of this sum
     const gold = s.hero.gold;
     const k = keepDaily(s, o.id, T(2026, 10, 23, 10), never);
     expect(k.bossDown).toBe('slime');
@@ -367,7 +368,7 @@ describe('save, load and migrate', () => {
   it('migrates a v1 save with tasks and vitality', () => {
     const v1 = { version: 1, hero: { name: 'Old', calling: 'mystic', vitality: 30, gold: 12, body: 'man', equipped: { torso: 'bogus' } }, tasks: [{ id: 'x', type: 'daily', title: 'Read', difficulty: 'hard', streak: 3 }, { type: 'errand', title: 'Post' }, { title: '' }] };
     const s = migrate(v1);
-    expect(s.version).toBe(3);
+    expect(s.version).toBe(4);
     expect(s.oaths[0].cold).toBe(0);
     expect(s.hero.hp).toBe(30);
     expect(s.hero.look.sex).toBe('male');

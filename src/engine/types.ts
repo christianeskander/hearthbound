@@ -6,6 +6,8 @@ export type Sex = 'female' | 'male';
 export type Slot = 'head' | 'torso' | 'cloak' | 'legs' | 'feet';
 export type OathKind = 'daily' | 'habit' | 'todo';
 export type Material = 'iron' | 'herb' | 'thread' | 'ink' | 'ember' | 'gel';
+/** standard: the full game. gentle: tiny, zero-planning oaths and no penalties. kid: big-picture view, no penalties. */
+export type HeroMode = 'standard' | 'gentle' | 'kid';
 
 export interface Oath {
   id: string;
@@ -33,6 +35,8 @@ export interface Oath {
   createdDay: DayKey;
   /** dailies: missed nights in a row (0-3); keeping it again pays a rekindle bonus */
   cold: number;
+  /** a picture (emoji) for the kid and gentle views */
+  icon?: string;
 }
 
 export interface Look {
@@ -69,7 +73,7 @@ export interface Quest { boss: string; hp: number; max: number; startedDay: DayK
 
 export interface Focus { startedAt: number; minutes: number; }
 
-export interface ChronicleEntry { t: number; text: string; kind: 'keep' | 'miss' | 'level' | 'boss' | 'buy' | 'life' | 'mind' | 'focus' | 'forge'; }
+export interface ChronicleEntry { t: number; text: string; kind: 'keep' | 'miss' | 'level' | 'boss' | 'buy' | 'life' | 'mind' | 'focus' | 'forge' | 'story' | 'badge' | 'pet' | 'season' | 'chore' | 'rest'; }
 
 export interface MindEvent { t: number; day: DayKey; oath: string; kind: 'keep' | 'slip' | 'miss' | 'forgiven'; stat: Stat; hour: number; }
 
@@ -95,6 +99,8 @@ export interface DawnReport {
   keptYesterday: number;
   /** vitality the night cap spared */
   spared?: number;
+  /** nights that were rest days (sick, away) and cost nothing */
+  rested?: number;
 }
 
 export interface DayState {
@@ -104,6 +110,29 @@ export interface DayState {
   lastKeepAt: number;
   rested: boolean;
   gifted: boolean;
+  /** v4: the familiar was patted today; all of today's dailies were kept (celebrated once) */
+  patted?: boolean;
+  perfect?: boolean;
+}
+
+/** One hearth day, for charts and the weekly report. due/kept are dailies, settled at the day turn. */
+export interface DayLog { due: number; kept: number; keeps: number; xp: number; gold: number; focus: number; paused?: boolean; perfect?: boolean; }
+
+export interface ChoreStep { id: string; title: string; done: boolean; doneAt: number | null; }
+/** A big real task turned into a foe: its health is its steps. */
+export interface Chore { id: string; name: string; art: string; difficulty: Difficulty; stat: Stat; steps: ChoreStep[]; createdAt: number; beatenAt: number | null; }
+
+/** Days off: sick, away or just resting. Dailies due on these days are not missed. */
+export interface Pause { from: DayKey; to: DayKey; why: 'sick' | 'away' | 'rest'; }
+
+export interface BossRecord { id: string; name: string; start: DayKey; end: DayKey | null; won: boolean; }
+
+export interface Stats {
+  keeps: number; slips: number; misses: number; focusMinutes: number; bossesDown: number;
+  // v4 counters (best-effort reconstructed for older saves)
+  dailyKeeps: number; todos: number; habitUps: number; perfectDays: number; rewardsBought: number; forged: number;
+  rekindles: number; earlyKeeps: number; choreSteps: number; choreBosses: number; xpTotal: number; goldTotal: number;
+  restDays: number; rites: number; statKeeps: Record<Stat, number>;
 }
 
 export interface Save {
@@ -121,7 +150,28 @@ export interface Save {
   dawn: DawnReport | null;
   chronicle: ChronicleEntry[];
   mind: Mind;
-  settings: { dayStart: number; sound: boolean; location: string };
+  settings: Settings;
   weekly: { week: DayKey; mercyUsed: boolean; coalsGiven: boolean };
-  stats: { keeps: number; slips: number; misses: number; focusMinutes: number; bossesDown: number };
+  stats: Stats;
+  // ---- v4
+  mode: HeroMode;
+  /** familiar id -> bond points; familiars grow through stages as you keep oaths */
+  bonds: Record<string, number>;
+  story: { chapter: number; base: Record<string, number> | null; claimed: number[] };
+  season: { id: string; sparks: number; got: number[] };
+  achievements: Record<string, number>;
+  history: Record<DayKey, DayLog>;
+  bossLog: BossRecord[];
+  chores: Chore[];
+  pauses: Pause[];
+  /** the Monday of the last weekly report the hero has read */
+  reportSeen: DayKey;
+}
+
+export interface Settings {
+  dayStart: number; sound: boolean; location: string;
+  /** v4: daily reminder (local time HH:MM) */
+  reminder: { on: boolean; time: string };
+  /** no vitality loss, no broken streaks, no boss bites (kid and gentle heroes) */
+  noPenalty: boolean;
 }

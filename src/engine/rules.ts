@@ -1,10 +1,15 @@
 import {
   BASE_MODS, BOSSES, CALLINGS, COLD_MAX, COLD_STEP, DAWN_MEND, DIFF, FAMILIARS, GEAR, HABIT_FADE, HABIT_FLOOR, KINDLE_COST,
   MAX_EMBERS, NIGHT_CAP, OMENS, PERKS, RECIPES, REST_COST, REST_HEAL, STAT_IDS, STAT_MATERIAL, STREAK_CAP_DAYS, STREAK_STEP,
-  KEEP_WARMTH, familiarById, gearById, type Mods, type Omen,
+  KEEP_WARMTH, BOND_KEEP, familiarById, gearById, bossById, type Mods, type Omen,
 } from './content';
 import { addDays, dayDiff, daysBetween, dowOf, hashStr, hearthDay, weekOf, type DayKey } from './time';
 import type { ChronicleEntry, DawnReport, Difficulty, Material, Oath, OathKind, Save, Stat } from './types';
+import { dayLog, earnGold } from './ledger';
+import { addBond, stageOf, type Evolved } from './pets';
+import { SPARKS, addSparks, rollSeason } from './season';
+import { checkBadges, type Badge } from './achievements';
+import { isPaused, trimPauses } from './pause';
 
 export type Rng = () => number;
 
@@ -37,7 +42,7 @@ export function mods(s: Save, withOmen = true): Mods {
   const m: Mods = { ...BASE_MODS };
   addMods(m, CALLINGS.find((c) => c.id === s.hero.calling)?.mods);
   for (const p of s.hero.perks) addMods(m, PERKS.find((x) => x.id === p)?.mods);
-  addMods(m, familiarById(s.hero.familiar)?.mods);
+  addMods(m, familiarById(s.hero.familiar)?.mods, stageOf(s, s.hero.familiar).gift);
   for (const id of Object.values(s.hero.equipped)) if (id) addMods(m, gearById(id)?.bonus);
   const r = (st: Stat) => statRank(s.hero.statXp[st] || 0);
   m.strike += 0.02 * r('might');
@@ -54,7 +59,7 @@ export function chronicle(s: Save, text: string, kind: ChronicleEntry['kind'], t
   if (s.chronicle.length > 300) s.chronicle.length = 300;
 }
 
-function award(s: Save, title: string, now: number) {
+export function award(s: Save, title: string, now: number) {
   if (!s.hero.titles.includes(title)) {
     s.hero.titles.push(title);
     if (!s.hero.title) s.hero.title = title;
@@ -161,17 +166,42 @@ function rollPayout(s: Save, o: Oath, now: number, rng: Rng): Payout {
   return p;
 }
 
-export interface KeepResult { payout: Payout; levelsGained: number; bossDown: string | null; titles: string[]; }
+export interface KeepResult {
+  payout: Payout; levelsGained: number; bossDown: string | null; titles: string[];
+  /** v4 */
+  evolved: Evolved | null; badges: Badge[]; tiers: number[]; perfect: boolean;
+}
 
-function applyPayout(s: Save, o: Oath, p: Payout, now: number, rng: Rng): KeepResult {
+/** True once every daily due today has been kept (and at least one was due). */
+export function allKeptToday(s: Save, now: number) {
+  const d = today(s, now);
+  const due = s.oaths.filter((o) => isDueOn(o, d));
+  return due.length > 0 && due.every((o) => o.doneDay === d);
+}
+
+function applyPayout(s: Save, o: Oath, p: Payout, now: number, rng: Rng, kind: 'daily' | 'habit' | 'todo' | 'chore' = o.kind === 'todo' ? 'todo' : o.kind): KeepResult {
   const h = s.hero;
-  h.gold += p.gold;
+  const d = today(s, now);
+  earnGold(s, p.gold, now);
+  dayLog(s, d).keeps++;
   h.mana = Math.min(maxMana(s), h.mana + p.mana);
   if (o.kind !== 'habit') h.hp = Math.min(maxHp(s), h.hp + KEEP_WARMTH);
   h.statXp[o.stat] = (h.statXp[o.stat] || 0) + 1 + (o.difficulty === 'hard' ? 2 : o.difficulty === 'medium' ? 1 : 0);
   if (p.drop) s.materials[p.drop] = (s.materials[p.drop] || 0) + 1;
   if (o.kind !== 'habit') { s.day.combo = p.combo; s.day.lastKeepAt = now; }
   s.stats.keeps++;
+  s.stats.statKeeps[o.stat] = (s.stats.statKeeps[o.stat] || 0) + 1;
+  const hour = new Date(now).getHours();
+  if (hour >= 4 && hour < 8) s.stats.earlyKeeps++;
+  // a familiar grows with every real keep; repeat habit taps (already fading) do not feed it
+  const first = p.fade >= 1;
+  const evolved = first ? addBond(s, BOND_KEEP, now) : null;
+  let sparks = kind === 'habit' ? (first ? SPARKS.habit : 0) : kind === 'chore' ? SPARKS.chore : kind === 'todo' ? SPARKS.todo : SPARKS.daily;
+  let perfect = false;
+  if (kind === 'daily' && !s.day.perfect && allKeptToday(s, now)) {
+    perfect = true; s.day.perfect = true; s.stats.perfectDays++; dayLog(s, d).perfect = true; sparks += SPARKS.perfect;
+    chronicle(s, 'Every daily kept today. A clean sweep.', 'keep', now);
+  }
   const titles: string[] = [];
   if (s.stats.keeps === 1 && award(s, 'Kindler', now)) titles.push('Kindler');
   if (p.streak >= 7 && award(s, 'Seven Nights', now)) titles.push('Seven Nights');
@@ -179,16 +209,18 @@ function applyPayout(s: Save, o: Oath, p: Payout, now: number, rng: Rng): KeepRe
   const levelsGained = gainXp(s, p.xp, now);
   let bossDown: string | null = null;
   if (s.quest && p.strike) bossDown = strikeBoss(s, p.strike, now);
-  const d = new Date(now);
-  s.mind.log.push({ t: now, day: today(s, now), oath: o.id, kind: 'keep', stat: o.stat, hour: d.getHours() });
+  s.mind.log.push({ t: now, day: d, oath: o.id, kind: 'keep', stat: o.stat, hour });
   trimMind(s);
   void rng;
-  return { payout: p, levelsGained, bossDown, titles };
+  const tiers = sparks ? addSparks(s, sparks, d, now) : [];
+  const badges = checkBadges(s, now);
+  return { payout: p, levelsGained, bossDown, titles, evolved, badges, tiers, perfect };
 }
 
 export function gainXp(s: Save, xp: number, now: number): number {
   const h = s.hero;
   h.xp += xp;
+  if (xp > 0) { s.stats.xpTotal += xp; dayLog(s, today(s, now)).xp += xp; }
   let gained = 0;
   while (h.xp >= xpToNext(h.level)) {
     h.xp -= xpToNext(h.level);
@@ -212,7 +244,9 @@ export function keepDaily(s: Save, id: string, now: number, rng: Rng = Math.rand
   const p = rollPayout(s, o, now, rng);
   o.doneDay = d;
   o.streak += 1;
+  if (o.cold > 0) s.stats.rekindles++;
   o.cold = 0;
+  s.stats.dailyKeeps++;
   o.bestStreak = Math.max(o.bestStreak, o.streak);
   const r = applyPayout(s, o, p, now, rng);
   chronicle(s, `${p.rekindle ? 'Rekindled' : 'Kept'} "${o.title}" (+${p.gold} gold, +${p.xp} XP${p.combo > 1 ? `, combo x${p.combo}` : ''}).`, 'keep', now);
@@ -234,6 +268,7 @@ export function tapHabit(s: Save, id: string, dir: 1 | -1, now: number, rng: Rng
     if (!o.up) throw new Error('This habit has no + side.');
     const p = rollPayout(s, o, now, rng);
     o.ups++;
+    s.stats.habitUps++;
     const r = applyPayout(s, o, p, now, rng);
     chronicle(s, `Did "${o.title}" (+${p.gold} gold, +${p.xp} XP).`, 'keep', now);
     return r;
@@ -241,8 +276,13 @@ export function tapHabit(s: Save, id: string, dir: 1 | -1, now: number, rng: Rng
   if (!o.down) throw new Error('This habit has no − side.');
   o.downs++;
   const m = mods(s);
-  const hurt = Math.max(1, Math.round(DIFF[o.difficulty].hurt * 0.5 * (1 - m.missCut)));
   s.stats.slips++;
+  if (gentle(s)) {
+    // no-penalty heroes: a slip is only noted, never hurts
+    chronicle(s, `Noted a slip on "${o.title}". No harm done.`, 'miss', now);
+    return { hurt: 0, fell: false };
+  }
+  const hurt = Math.max(1, Math.round(DIFF[o.difficulty].hurt * 0.5 * (1 - m.missCut)));
   s.mind.log.push({ t: now, day: today(s, now), oath: o.id, kind: 'slip', stat: o.stat, hour: new Date(now).getHours() });
   trimMind(s);
   chronicle(s, `Slipped on "${o.title}" (−${hurt} vitality).`, 'miss', now);
@@ -256,10 +296,20 @@ export function completeTodo(s: Save, id: string, now: number, rng: Rng = Math.r
   if (o.done) throw new Error('Already done.');
   const p = rollPayout(s, o, now, rng);
   o.done = true; o.doneAt = now;
+  s.stats.todos++;
   const r = applyPayout(s, o, p, now, rng);
   chronicle(s, `Finished the errand "${o.title}" (+${p.gold} gold).`, 'keep', now);
   return r;
 }
+
+/** A keep that is not one of the hero's oaths (a chore step): pays like an errand of that size. */
+export function keepVirtual(s: Save, o: Oath, now: number, rng: Rng = Math.random): KeepResult {
+  const p = rollPayout(s, o, now, rng);
+  return applyPayout(s, o, p, now, rng, 'chore');
+}
+
+/** Kid and gentle heroes (or anyone who turns it on) never lose vitality or streaks. */
+export const gentle = (s: Save) => s.mode === 'kid' || s.settings.noPenalty;
 
 /** Vitality loss. Returns true if the hero fell (and has been set back on their feet). */
 export function hurtHero(s: Save, amount: number, now: number): boolean {
@@ -287,6 +337,8 @@ export function inviteBoss(s: Save, bossId: string, now: number) {
   if (err) throw new Error(err);
   const b = BOSSES.find((x) => x.id === bossId)!;
   s.quest = { boss: b.id, hp: b.hp, max: b.hp, startedDay: today(s, now) };
+  s.bossLog.push({ id: b.id, name: b.name, start: today(s, now), end: null, won: false });
+  if (s.bossLog.length > 100) s.bossLog.splice(0, s.bossLog.length - 100);
   s.settings.location = b.location;
   chronicle(s, `Set out after ${b.name}.`, 'boss', now);
 }
@@ -295,6 +347,7 @@ export function abandonQuest(s: Save, now: number) {
   if (!s.quest) return;
   const b = BOSSES.find((x) => x.id === s.quest!.boss)!;
   chronicle(s, `Turned back from ${b.name}. It will wait.`, 'boss', now);
+  closeBossLog(s, b.id, today(s, now), false);
   s.quest = null;
 }
 
@@ -306,12 +359,20 @@ export function strikeBoss(s: Save, dmg: number, now: number): string | null {
   s.quest = null;
   if (!s.defeated.includes(b.id)) s.defeated.push(b.id);
   s.stats.bossesDown++;
-  s.hero.gold += b.gold;
+  closeBossLog(s, b.id, today(s, now), true);
+  earnGold(s, b.gold, now);
+  addSparks(s, SPARKS.boss, today(s, now), now);
   s.materials[b.drop[0]] = (s.materials[b.drop[0]] || 0) + b.drop[1];
   chronicle(s, `Defeated ${b.name}! +${b.gold} gold, +${b.xp} XP, ${b.drop[1]} ${b.drop[0]}.`, 'boss', now);
   award(s, b.title, now);
   gainXp(s, b.xp, now);
   return b.id;
+}
+
+function closeBossLog(s: Save, id: string, day: DayKey, won: boolean) {
+  const r = [...s.bossLog].reverse().find((x) => x.id === id && x.end === null);
+  if (r) { r.end = day; r.won = won; }
+  else s.bossLog.push({ id, name: bossById(id)?.name || id, start: day, end: day, won });
 }
 
 // ---------------------------------------------------------------- the day turn
@@ -329,17 +390,24 @@ export function dayTurn(s: Save, now: number): DawnReport | null {
   const boss = s.quest ? BOSSES.find((b) => b.id === s.quest!.boss)! : null;
   const rep: DawnReport = {
     day: t, nights: nights.length, missed: [], forgiven: [], streaksBroken: [], hpLost: 0, bossHits: 0,
-    bossName: boss?.name ?? null, gifts: [], fell: false, goldLost: 0, omen: omenFor(t).id, keptYesterday: 0, spared: 0,
+    bossName: boss?.name ?? null, gifts: [], fell: false, goldLost: 0, omen: omenFor(t).id, keptYesterday: 0, spared: 0, rested: 0,
   };
+  const soft = gentle(s);
   const m = mods(s, false);
   const last = nights[nights.length - 1];
   for (const d of nights) {
     const counts = dayDiff(d, t) <= 3; // only the last 3 nights cost vitality
     const omen = omenFor(d);
     const omenM = mods({ ...s, day: { ...s.day, key: d } });
+    const paused = isPaused(s, d);
+    const log = dayLog(s, d);
+    let due = 0, kept = 0, rested = false;
     for (const o of s.oaths) {
       if (!isDueOn(o, d) || o.createdDay > d) continue;
-      if (o.doneDay === d) { if (d === last) rep.keptYesterday++; continue; }
+      due++;
+      if (o.doneDay === d) { kept++; if (d === last) rep.keptYesterday++; continue; }
+      // a rest day (or a no-penalty hero): the daily simply waits. No token spent, nothing lost.
+      if (paused || soft) { rested = rested || paused; continue; }
       const evt = { t: now, day: d, oath: o.id, stat: o.stat, hour: -1 };
       // weekly perks reset
       const wk = weekOf(d);
@@ -367,8 +435,12 @@ export function dayTurn(s: Save, now: number): DawnReport | null {
       rep.hpLost += hp;
       rep.missed.push({ title: o.title, hp });
     }
+    log.due = due; log.kept = kept;
+    if (paused) { log.paused = true; if (rested) rep.rested = (rep.rested || 0) + 1; }
   }
   trimMind(s);
+  rollSeason(s, t);
+  trimPauses(s, t);
   // Monday embers (Banked Coals)
   const wkNow = weekOf(t);
   if (s.weekly.week !== wkNow) s.weekly = { week: wkNow, mercyUsed: false, coalsGiven: false };
@@ -391,7 +463,7 @@ export function dayTurn(s: Save, now: number): DawnReport | null {
   if (!rep.fell) {
     const fam = familiarById(s.hero.familiar);
     const before = s.hero.hp;
-    s.hero.hp = Math.min(maxHp(s), s.hero.hp + DAWN_MEND + (fam?.dawnHeal || 0));
+    s.hero.hp = Math.min(maxHp(s), s.hero.hp + DAWN_MEND + Math.round((fam?.dawnHeal || 0) * stageOf(s, s.hero.familiar).gift));
     const healed = s.hero.hp - before;
     if (healed > 0) rep.gifts.push(fam?.dawnHeal ? `The hearth and ${fam.name} mended ${healed} vitality overnight.` : `The hearth mended ${healed} vitality overnight.`);
   }
@@ -478,6 +550,7 @@ export function buyFamiliar(s: Save, id: string, now: number) {
   const cost = priceOf(s, f.price);
   if (s.hero.gold < cost) throw new Error(`Needs ${cost - s.hero.gold} more gold.`);
   s.hero.gold -= cost; s.hero.familiars.push(id); s.hero.familiar = id;
+  s.bonds[id] = s.bonds[id] ?? 0; // a new familiar arrives Young
   chronicle(s, `${f.name}, ${f.kind}, joined you.`, 'buy', now);
 }
 
@@ -499,6 +572,8 @@ export function buyReward(s: Save, id: string, now: number) {
   if (!r) throw new Error('No such reward.');
   if (s.hero.gold < r.cost) throw new Error(`Needs ${r.cost - s.hero.gold} more gold.`);
   s.hero.gold -= r.cost; r.bought++;
+  s.stats.rewardsBought++;
+  checkBadges(s, now);
   chronicle(s, `Treated yourself: ${r.title} (${r.cost} gold). Enjoy it.`, 'buy', now);
 }
 
@@ -529,7 +604,9 @@ export function forge(s: Save, recipeId: string, now: number) {
   if (r.makes.gear) { s.hero.gear.push(r.makes.gear); s.hero.equipped[gearById(r.makes.gear)!.slot] = r.makes.gear; }
   if (r.makes.embers) s.hero.embers = Math.min(MAX_EMBERS, s.hero.embers + r.makes.embers);
   if (r.makes.heal) s.hero.hp = Math.min(maxHp(s), s.hero.hp + r.makes.heal);
+  s.stats.forged++;
   chronicle(s, `Forged: ${r.name}.`, 'forge', now);
+  checkBadges(s, now);
 }
 
 // ---------------------------------------------------------------- focus rite
@@ -559,14 +636,18 @@ export function finishFocus(s: Save, now: number) {
   const min = s.focus.minutes;
   const p = focusPay(s, min);
   s.focus = null;
-  s.hero.gold += p.gold;
+  earnGold(s, p.gold, now);
   s.hero.mana = Math.min(maxMana(s), s.hero.mana + p.mana);
   s.hero.statXp.wit += Math.ceil(min / 15);
   s.stats.focusMinutes += min;
+  s.stats.rites++;
+  dayLog(s, today(s, now)).focus += min;
   chronicle(s, `Finished a ${min}-minute focus rite (+${p.xp} XP, +${p.gold} gold).`, 'focus', now);
   const levels = gainXp(s, p.xp, now);
   const bossDown = p.strike ? strikeBoss(s, p.strike, now) : null;
-  return { ...p, levels, bossDown };
+  const tiers = addSparks(s, SPARKS.focus15 * Math.round(min / 15), today(s, now), now);
+  const badges = checkBadges(s, now);
+  return { ...p, levels, bossDown, tiers, badges };
 }
 
 export function cancelFocus(s: Save) { s.focus = null; }

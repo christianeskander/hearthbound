@@ -3,6 +3,7 @@
 // reference model of Habitica's public rules (numbers only, written from
 // scratch here) for comparison.
 // Run: npx vite-node tools/sim.ts   (optional: --days 180 --seeds 24)
+import { canClaim, claimChapter, syncStory } from '../src/engine/story';
 import { BOSSES, GEAR, CALLINGS, FAMILIARS, PERKS } from '../src/engine/content';
 import {
   addOath, buyGear, canForge, canLearn, completeTodo, dayTurn, forge, inviteBoss, isDueOn, keepDaily, kindle, learnPerk,
@@ -104,6 +105,8 @@ function play(pr: Profile, seed: number): Run {
     for (const g of buyable) if (s.hero.gold >= priceOf(s, g.price)) { buyGear(s, g.id, now); if (r.firstGear === null) r.firstGear = day + 1; }
     if (r.afford45 === null && earned >= 45) r.afford45 = day + 1;
     if (r.afford80 === null && earned >= 80) r.afford80 = day + 1;
+    // v4: the story pays out as chapters complete (season-track gold arrives inside the keeps)
+    if (!pr.passive) { syncStory(s); while (canClaim(s)) { if (track(day, () => claimChapter(s, now)) === undefined) break; } }
     void fallsBefore;
     if (CHECK.includes(day + 1)) { r.level[day + 1] = s.hero.level + s.hero.xp / xpToNext(s.hero.level); r.earned[day + 1] = earned; r.xp[day + 1] = xpTotal; r.bonusGear[day + 1] = s.hero.gear.filter((g) => GEAR.find((x) => x.id === g)?.source === 'market').length; }
   }
