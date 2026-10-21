@@ -22,7 +22,7 @@ export function OathsTab({ s }: { s: Save }) {
     <div class="tab">
       <HeroStrip s={s} />
       <Seg label="Oath kinds" value={kind} onChange={setKind} options={[{ id: 'daily', label: 'Dailies' }, { id: 'habit', label: 'Habits' }, { id: 'todo', label: 'Errands' }]} />
-      <p class="hint">{kind === 'daily' ? `Due on set days. Keep them before the day turns at ${s.settings.dayStart}:00am. A miss costs vitality and resets the streak, unless an ember token covers it.` : kind === 'habit' ? 'Tap + when you do a good thing, − when you slip. No schedule, no streak to lose.' : 'One-off jobs. Tick them off once.'}</p>
+      <p class="hint">{kind === 'daily' ? `Due on set days. Keep them before the day turns at ${s.settings.dayStart}:00am. A miss costs some vitality and resets the streak, unless an ember token covers it. Pick a missed one back up and it pays extra.` : kind === 'habit' ? 'Tap + when you do a good thing, − when you slip. No schedule, no streak to lose. Repeat + taps on the same day pay a little less each time.' : 'One-off jobs. Tick them off once.'}</p>
       <div class="oaths">
         {list.length === 0 && <div class="empty">Nothing here yet. Start with something small enough to do on a bad day.</div>}
         {list.map((o) => {

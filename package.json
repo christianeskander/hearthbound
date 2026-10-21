@@ -10,7 +10,8 @@
     "test": "vitest run",
     "e2e": "node tests/e2e.mjs",
     "postinstall": "node tools/trim_phaser.mjs",
-    "assets": "python3 tools/build_assets.py && python3 tools/make_icons.py"
+    "assets": "python3 tools/build_assets.py && python3 tools/make_icons.py",
+    "sim": "vite-node tools/sim.ts"
   },
   "dependencies": {
     "phaser": "^3.90.0",

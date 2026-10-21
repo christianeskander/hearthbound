@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { hearthDay, addDays, daysBetween, weekOf } from '../src/engine/time';
 import {
   addOath, buyFamiliar, buyGear, buyReward, canLearn, completeTodo, dayTurn, finishFocus, forge, inviteBoss, keepDaily, learnPerk,
-  maxHp, mods, nextOath, preview, rest, startFocus, tapHabit, xpToNext, kindle, validateOath, focusLeft,
+  maxHp, mods, nextOath, preview, rest, startFocus, tapHabit, xpToNext, kindle, validateOath, focusLeft, streakBonus,
 } from '../src/engine/rules';
 import { newSave, migrate, persist, load, exportSave, importSave, KEY, BACKUP_KEY, type Store } from '../src/engine/save';
 import { suggest, accept, dismiss } from '../src/engine/mind';
@@ -114,7 +114,7 @@ describe('the day turn', () => {
     keepDaily(s, o.id, d1, never); // streak 1 on the 21st
     const hp0 = s.hero.hp;
     dayTurn(s, T(2026, 10, 22, 9)); // 21st was kept
-    expect(s.hero.hp).toBe(Math.min(maxHp(s), hp0 + 2)); // only Soot's dawn gift
+    expect(s.hero.hp).toBe(Math.min(maxHp(s), hp0 + 4)); // the hearth's 2 plus Soot's 2
     const rep = dayTurn(s, T(2026, 10, 23, 9))!; // 22nd missed
     expect(rep.missed).toHaveLength(1);
     expect(rep.streaksBroken[0]).toEqual({ title: 'Water', was: 1 });
@@ -157,7 +157,7 @@ describe('the day turn', () => {
     const rep = dayTurn(s, T(2026, 10, 22, 9))!;
     expect(rep.missed).toHaveLength(1); // only the 21st
   });
-  it('falling resets you kindly: full vitality, 10% gold and level progress lost', () => {
+  it('falling resets you kindly: full vitality, 10% gold and half the level progress lost', () => {
     const d1 = T(2026, 10, 21, 9);
     const s = fresh(d1); s.hero.embers = 0; s.hero.hp = 3; s.hero.gold = 100; s.hero.xp = 20;
     daily(s, d1, { difficulty: 'hard' });
@@ -166,7 +166,7 @@ describe('the day turn', () => {
     expect(s.hero.hp).toBe(maxHp(s));
     expect(s.hero.gold).toBe(90);
     expect(rep.goldLost).toBe(10);
-    expect(s.hero.xp).toBe(0);
+    expect(s.hero.xp).toBe(10);
     expect(s.hero.level).toBe(1);
   });
   it('Warden misses hurt less than Scholar misses', () => {
@@ -188,16 +188,16 @@ describe('bosses', () => {
     expect(s.settings.location).toBe('wood');
     const r = keepDaily(s, o.id, d1, never);
     expect(r.payout.strike).toBeGreaterThan(0);
-    expect(s.quest!.hp).toBe(80 - r.payout.strike);
+    expect(s.quest!.hp).toBe(130 - r.payout.strike);
     dayTurn(s, T(2026, 10, 22, 9));
     const rep = dayTurn(s, T(2026, 10, 23, 9))!;
-    expect(rep.bossHits).toBe(3);
+    expect(rep.bossHits).toBe(1);
     s.quest!.hp = 1;
     const gold = s.hero.gold;
     const k = keepDaily(s, o.id, T(2026, 10, 23, 10), never);
     expect(k.bossDown).toBe('slime');
     expect(s.quest).toBeNull();
-    expect(s.hero.gold).toBe(gold + k.payout.gold + 60);
+    expect(s.hero.gold).toBe(gold + k.payout.gold + 80);
     expect(s.hero.titles).toContain('Breaker of Later');
     expect(s.materials.gel).toBe(3);
   });
@@ -265,7 +265,7 @@ describe('levels, perks, habits, errands', () => {
 
 describe('market, forge and focus', () => {
   it('buying gear equips it and spends gold; you cannot overspend', () => {
-    const s = fresh(); s.hero.gold = 50;
+    const s = fresh(); s.hero.gold = 95;
     expect(() => buyGear(s, 'kettle', 0)).toThrow(/more gold/);
     buyGear(s, 'cape_red', 0);
     expect(s.hero.gold).toBe(5);
@@ -273,7 +273,7 @@ describe('market, forge and focus', () => {
     expect(mods(s).gold).toBeGreaterThan(mods(fresh()).gold);
   });
   it('familiars can be bought and walk with you', () => {
-    const s = fresh(); s.hero.gold = 60;
+    const s = fresh(); s.hero.gold = 90;
     buyFamiliar(s, 'bramble', 0);
     expect(s.hero.familiar).toBe('bramble');
     expect(s.hero.gold).toBe(0);
@@ -367,12 +367,104 @@ describe('save, load and migrate', () => {
   it('migrates a v1 save with tasks and vitality', () => {
     const v1 = { version: 1, hero: { name: 'Old', calling: 'mystic', vitality: 30, gold: 12, body: 'man', equipped: { torso: 'bogus' } }, tasks: [{ id: 'x', type: 'daily', title: 'Read', difficulty: 'hard', streak: 3 }, { type: 'errand', title: 'Post' }, { title: '' }] };
     const s = migrate(v1);
-    expect(s.version).toBe(2);
+    expect(s.version).toBe(3);
+    expect(s.oaths[0].cold).toBe(0);
     expect(s.hero.hp).toBe(30);
     expect(s.hero.look.sex).toBe('male');
     expect(s.hero.equipped.torso).toBe('tunic_linen');
     expect(s.oaths.map((o) => o.kind)).toEqual(['daily', 'todo']);
     expect(s.oaths[0].streak).toBe(3);
     expect(s.hero.familiar).toBe('soot');
+  });
+});
+
+describe('balance (v3)', () => {
+  it('the level curve is quick early and slower later', () => {
+    expect(xpToNext(1)).toBe(40);
+    expect(xpToNext(2)).toBe(70);
+    for (let l = 1; l < 40; l++) {
+      expect(xpToNext(l + 1)).toBeGreaterThan(xpToNext(l));
+      expect(xpToNext(l + 2) - xpToNext(l + 1)).toBeGreaterThanOrEqual(xpToNext(l + 1) - xpToNext(l));
+    }
+    expect(xpToNext(10)).toBeGreaterThan(400);
+  });
+  it('streak bonus tops out at +30%', () => {
+    expect(streakBonus(0)).toBe(0);
+    expect(streakBonus(4)).toBeCloseTo(0.1);
+    expect(streakBonus(12)).toBeCloseTo(0.3);
+    expect(streakBonus(100)).toBeCloseTo(0.3);
+  });
+  it('a daily you missed pays a rekindle bonus when you pick it back up, then goes back to normal', () => {
+    const d1 = T(2026, 10, 21, 9);
+    const s = fresh(d1, 'warden'); s.hero.embers = 0;
+    const o = daily(s, d1, { difficulty: 'medium' });
+    const normal = preview(s, o, d1).gold;
+    dayTurn(s, T(2026, 10, 22, 9)); // missed the 21st
+    dayTurn(s, T(2026, 10, 23, 9)); // and the 22nd
+    expect(o.cold).toBe(2);
+    expect(s.dawn!.gifts.join(' ')).toMatch(/Rekindle/);
+    const now = T(2026, 10, 23, 10);
+    const p = preview(s, o, now);
+    expect(p.rekindle).toBeCloseTo(0.5);
+    expect(p.gold).toBeGreaterThan(normal);
+    keepDaily(s, o.id, now, never);
+    expect(o.cold).toBe(0);
+    expect(s.chronicle[0].text).toMatch(/^Rekindled/);
+    for (let i = 0; i < 6; i++) dayTurn(s, T(2026, 10, 24 + i, 9));
+    expect(o.cold).toBe(3); // capped
+  });
+  it('repeat + taps on one habit fade, never reach zero, and do not build the combo', () => {
+    const now = T(2026, 10, 21, 9);
+    const s = fresh(now);
+    const h = addOath(s, { kind: 'habit', title: 'h', difficulty: 'medium', stat: 'wit', up: true, down: false }, now, never);
+    const pays: number[] = [];
+    for (let i = 0; i < 8; i++) pays.push((tapHabit(s, h.id, 1, now + i * 60000, never) as { payout: { xp: number } }).payout.xp);
+    expect(pays[0]).toBe(14);
+    expect(pays[1]).toBeLessThan(pays[0]);
+    expect(pays[2]).toBeLessThan(pays[1]);
+    expect(Math.min(...pays)).toBeGreaterThan(0);
+    expect(pays.reduce((a, b) => a + b, 0)).toBeLessThan(14 * 3);
+    expect(s.day.combo).toBe(0);
+    dayTurn(s, T(2026, 10, 22, 9)); // a new day: full pay again
+    expect(preview(s, h, T(2026, 10, 22, 10)).xp).toBe(14);
+  });
+  it('one dawn never takes more than 40% of max vitality, and says so', () => {
+    const d1 = T(2026, 10, 21, 9);
+    const s = fresh(d1, 'scholar'); s.hero.embers = 0;
+    for (let i = 0; i < 10; i++) daily(s, d1, { title: 'd' + i, difficulty: 'hard' });
+    const max = maxHp(s);
+    const rep = dayTurn(s, T(2026, 10, 22, 9))!;
+    expect(rep.fell).toBe(false);
+    expect(rep.spared).toBeGreaterThan(0);
+    expect(max - s.hero.hp).toBeLessThanOrEqual(Math.round(max * 0.4));
+    expect(rep.gifts.join(' ')).toMatch(/hearth caught you/);
+  });
+  it('the hearth mends a little at dawn for everyone, and a keep warms you by 1', () => {
+    const d1 = T(2026, 10, 21, 9);
+    const s = newSave({ name: 'A', calling: 'scholar', outfit: 'wayfarer', familiar: 'pip', look: { sex: 'female', skin: 'light', hair: 'bob', hairColor: 'black' } }, d1, never);
+    s.oaths = [];
+    const o = daily(s, d1);
+    s.hero.hp = 20;
+    keepDaily(s, o.id, d1, never);
+    expect(s.hero.hp).toBe(21);
+    s.hero.familiar = 'pip';
+    dayTurn(s, T(2026, 10, 22, 9));
+    expect(s.hero.hp).toBe(23);
+  });
+  it('a boss bites for its power per miss, softened by miss reduction', () => {
+    const d1 = T(2026, 10, 21, 9);
+    const s = fresh(d1, 'scholar'); s.hero.embers = 0;
+    s.defeated.push('slime');
+    daily(s, d1, { title: 'a' }); daily(s, d1, { title: 'b' });
+    inviteBoss(s, 'rat', d1);
+    expect(dayTurn(s, T(2026, 10, 22, 9))!.bossHits).toBe(4);
+  });
+  it('old saves at a level the new curve has passed get their levels and skill points', () => {
+    const s = fresh();
+    s.hero.level = 2; s.hero.xp = 80; s.hero.skillPoints = 1; // 80 XP was not enough for L3 before (90), it is now (70)
+    const m = migrate(JSON.parse(JSON.stringify(s)));
+    expect(m.hero.level).toBe(3);
+    expect(m.hero.xp).toBe(10);
+    expect(m.hero.skillPoints).toBe(2);
   });
 });

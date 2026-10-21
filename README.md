@@ -10,6 +10,7 @@ works offline, and everything stays on the device (no account, no network).
 npm install          # also trims Phaser to the one file the game uses (postinstall)
 npm run dev          # local dev server
 npm test             # unit tests (day turn, streaks, embers, combo, damage, rewards, save/migrate)
+npm run sim          # balance simulator: 30/90/180 days for three player types (see BALANCE.md)
 npm run build        # type-check + production build into dist/ (with an offline service worker)
 npm run preview      # serve dist/ on :4173
 npm run e2e          # phone-size browser run (390x844) with screenshots; needs `npm run preview`

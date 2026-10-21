@@ -71,6 +71,7 @@ function NextOath({ s, now }: { s: Save; now: number }) {
           <span class="keep-pay">earn <Icon name="coin" size={12} />+{p.gold}<span class="dim"> · +{p.xp} XP</span></span>
         </button>
       </div>
+      {p.rekindle > 0 && <p class="hint">Welcome back to this one: picking it up again pays {Math.round(p.rekindle * 100)}% extra today.</p>}
       {p.combo > 1 && <p class="hint">Combo x{p.combo} is live: this keep pays {Math.round((p.combo - 1) * 10)}% more.</p>}
     </div>
   );
@@ -112,7 +113,7 @@ function Dawn({ s }: { s: Save }) {
         <p>Missed: {r.missed.map((m) => `“${m.title}”`).join(', ')}. {r.hpLost > 0 ? `−${r.hpLost} vitality.` : ''}{r.bossHits ? ` ${r.bossName} hit back for ${r.bossHits}.` : ''}</p>
       )}
       {r.streaksBroken.length > 0 && <p class="dim">Streaks reset: {r.streaksBroken.map((b) => `${b.title} (${b.was})`).join(', ')}. They start again today.</p>}
-      {r.fell && <p class="bad">You ran out of vitality and woke by the hearth, rested. {r.goldLost} gold and this level's progress were lost. Your gear, titles and streak records stay.</p>}
+      {r.fell && <p class="bad">You ran out of vitality and woke by the hearth, rested. {r.goldLost} gold and half this level's progress were lost. Your gear, titles and streak records stay.</p>}
       {r.gifts.map((g, i) => <p key={'g' + i} class="good">{g}</p>)}
       {omen && <p class="omen-line"><Icon name="moon" size={12} /> Today's omen: <b>{omen.name}</b>, {omen.text.toLowerCase()}.</p>}
       <div class="row end"><button class="ghost" onClick={() => act('Read dawn report', (x) => { x.dawn = null; })}>Got it</button></div>

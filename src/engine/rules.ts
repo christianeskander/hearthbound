@@ -1,6 +1,7 @@
 import {
-  BASE_MODS, BOSSES, CALLINGS, DIFF, FAMILIARS, GEAR, KINDLE_COST, MAX_EMBERS, OMENS, PERKS, RECIPES,
-  REST_COST, REST_HEAL, STAT_IDS, STAT_MATERIAL, familiarById, gearById, type Mods, type Omen,
+  BASE_MODS, BOSSES, CALLINGS, COLD_MAX, COLD_STEP, DAWN_MEND, DIFF, FAMILIARS, GEAR, HABIT_FADE, HABIT_FLOOR, KINDLE_COST,
+  MAX_EMBERS, NIGHT_CAP, OMENS, PERKS, RECIPES, REST_COST, REST_HEAL, STAT_IDS, STAT_MATERIAL, STREAK_CAP_DAYS, STREAK_STEP,
+  KEEP_WARMTH, familiarById, gearById, type Mods, type Omen,
 } from './content';
 import { addDays, dayDiff, daysBetween, dowOf, hashStr, hearthDay, weekOf, type DayKey } from './time';
 import type { ChronicleEntry, DawnReport, Difficulty, Material, Oath, OathKind, Save, Stat } from './types';
@@ -8,7 +9,15 @@ import type { ChronicleEntry, DawnReport, Difficulty, Material, Oath, OathKind, 
 export type Rng = () => number;
 
 // ---------------------------------------------------------------- basics
-export const xpToNext = (level: number) => 60 + (level - 1) * 30;
+/**
+ * Experience for the next level: quick at first (40, 65, 100...), then the
+ * gaps grow with the square of the level, so later levels are earned, not
+ * handed out. L10 needs 425, L20 1195 (Habitica: 25, 50, 75... 260, 440).
+ */
+export function xpToNext(level: number) {
+  const n = Math.max(0, level - 1);
+  return Math.round((40 + 25 * n + 3 * n * n) / 5) * 5;
+}
 export const statRank = (xp: number) => Math.floor(Math.sqrt(xp / 3));
 export const maxMana = (s: Save) => 30 + 4 * s.hero.level;
 export function maxHp(s: Save) { return 50 + Math.round(mods(s, false).maxHp); }
@@ -79,7 +88,7 @@ export function addOath(s: Save, o: OathInput, now: number, rng: Rng = Math.rand
     id: uid(rng), kind: o.kind, title: o.title.trim(), notes: (o.notes || '').trim(), difficulty: o.difficulty, stat: o.stat,
     days: o.kind === 'daily' ? [...new Set(o.days!)].sort() : [], streak: 0, bestStreak: 0, doneDay: null,
     up: o.kind === 'habit' ? !!o.up : false, down: o.kind === 'habit' ? !!o.down : false, ups: 0, downs: 0,
-    done: false, doneAt: null, createdAt: now, createdDay: hearthDay(now, s.settings.dayStart),
+    done: false, doneAt: null, createdAt: now, createdDay: hearthDay(now, s.settings.dayStart), cold: 0,
   };
   s.oaths.push(oath);
   return oath;
@@ -107,33 +116,48 @@ export function nextOath(s: Save, now: number): Oath | null {
 }
 
 // ---------------------------------------------------------------- rewards
-export interface Payout { xp: number; gold: number; mana: number; strike: number; combo: number; bright: boolean; drop: Material | null; streak: number; }
+export interface Payout { xp: number; gold: number; mana: number; strike: number; combo: number; bright: boolean; drop: Material | null; streak: number; rekindle: number; fade: number; }
 
 function comboAfter(s: Save, now: number, m: Mods) {
   const within = s.day.lastKeepAt && now - s.day.lastKeepAt <= m.comboWindow * 60000;
   return within ? Math.min(s.day.combo + 1, m.comboCap) : 1;
 }
 
+/** Streak bonus: +2.5% a day kept in a row, up to +30%. */
+export const streakBonus = (streak: number) => Math.min(streak, STREAK_CAP_DAYS) * STREAK_STEP;
+/** Rekindle bonus for a daily that went cold: +25% per recent miss in a row, up to +75%. */
+export const rekindleBonus = (o: Oath) => (o.kind === 'daily' ? Math.min(o.cold || 0, COLD_MAX) * COLD_STEP : 0);
+/** Repeat + taps on one habit in a day fade: 1, 0.6, 0.36 ... never below 0.1. */
+export const habitFade = (o: Oath) => (o.kind === 'habit' ? Math.max(HABIT_FLOOR, HABIT_FADE ** (o.ups || 0)) : 1);
+
 /** What a keep would pay right now, without luck (bright keeps and drops). */
 export function preview(s: Save, o: Oath, now: number): Payout {
   const m = mods(s);
   const base = DIFF[o.difficulty];
-  const combo = comboAfter(s, now, m);
+  // habits do not build the combo (or it could be farmed by tapping +), but dailies and errands do
+  const combo = o.kind === 'habit' ? 1 : comboAfter(s, now, m);
   const streak = o.kind === 'daily' ? o.streak + 1 : 0;
-  const streakBonus = Math.min(streak, 20) * 0.025;
+  const rekindle = rekindleBonus(o);
+  const fade = habitFade(o);
   const comboMult = 1 + 0.1 * (combo - 1);
-  const xp = Math.round(base.xp * (1 + m.xp) * (1 + streakBonus) * comboMult);
-  const gold = Math.max(base.gold, Math.round(base.gold * (1 + m.gold) * (1 + streakBonus) * comboMult));
-  const mana = Math.max(1, Math.round(base.mana * (1 + m.mana)));
-  const strike = s.quest ? Math.max(1, Math.round(base.strike * (1 + m.strike) * comboMult)) : 0;
-  return { xp, gold, mana, strike, combo, bright: false, drop: null, streak };
+  const k = (1 + streakBonus(streak) + rekindle) * comboMult * fade;
+  const xp = Math.round(base.xp * (1 + m.xp) * k);
+  const gold = Math.round(base.gold * (1 + m.gold) * k);
+  const mana = Math.round(base.mana * (1 + m.mana) * fade);
+  const strike = s.quest ? Math.round(base.strike * (1 + m.strike) * k) : 0;
+  // a first keep always pays at least the listed amount; faded habit taps may pay less
+  const full = fade >= 1;
+  return {
+    xp: Math.max(full ? base.xp : 1, xp), gold: Math.max(full ? base.gold : 0, gold), mana: Math.max(full ? 1 : 0, mana),
+    strike: s.quest ? Math.max(full ? 1 : 0, strike) : 0, combo, bright: false, drop: null, streak, rekindle, fade,
+  };
 }
 
 function rollPayout(s: Save, o: Oath, now: number, rng: Rng): Payout {
   const p = preview(s, o, now);
   const m = mods(s);
   if (rng() < m.crit) { p.bright = true; p.xp = Math.round(p.xp * 1.5); p.gold = Math.round(p.gold * 1.5); p.strike = Math.round(p.strike * 1.5); }
-  if (rng() < 0.2 * (1 + m.drop)) p.drop = rng() < 0.15 ? 'ember' : STAT_MATERIAL[o.stat];
+  if (rng() < 0.2 * (1 + m.drop) * p.fade) p.drop = rng() < 0.15 ? 'ember' : STAT_MATERIAL[o.stat];
   return p;
 }
 
@@ -143,9 +167,10 @@ function applyPayout(s: Save, o: Oath, p: Payout, now: number, rng: Rng): KeepRe
   const h = s.hero;
   h.gold += p.gold;
   h.mana = Math.min(maxMana(s), h.mana + p.mana);
+  if (o.kind !== 'habit') h.hp = Math.min(maxHp(s), h.hp + KEEP_WARMTH);
   h.statXp[o.stat] = (h.statXp[o.stat] || 0) + 1 + (o.difficulty === 'hard' ? 2 : o.difficulty === 'medium' ? 1 : 0);
   if (p.drop) s.materials[p.drop] = (s.materials[p.drop] || 0) + 1;
-  s.day.combo = p.combo; s.day.lastKeepAt = now;
+  if (o.kind !== 'habit') { s.day.combo = p.combo; s.day.lastKeepAt = now; }
   s.stats.keeps++;
   const titles: string[] = [];
   if (s.stats.keeps === 1 && award(s, 'Kindler', now)) titles.push('Kindler');
@@ -187,9 +212,10 @@ export function keepDaily(s: Save, id: string, now: number, rng: Rng = Math.rand
   const p = rollPayout(s, o, now, rng);
   o.doneDay = d;
   o.streak += 1;
+  o.cold = 0;
   o.bestStreak = Math.max(o.bestStreak, o.streak);
   const r = applyPayout(s, o, p, now, rng);
-  chronicle(s, `Kept "${o.title}" (+${p.gold} gold, +${p.xp} XP${p.combo > 1 ? `, combo x${p.combo}` : ''}).`, 'keep', now);
+  chronicle(s, `${p.rekindle ? 'Rekindled' : 'Kept'} "${o.title}" (+${p.gold} gold, +${p.xp} XP${p.combo > 1 ? `, combo x${p.combo}` : ''}).`, 'keep', now);
   return r;
 }
 
@@ -241,9 +267,9 @@ export function hurtHero(s: Save, amount: number, now: number): boolean {
   if (s.hero.hp > 0) return false;
   const lost = Math.floor(s.hero.gold * 0.1);
   s.hero.gold -= lost;
-  s.hero.xp = 0;
+  s.hero.xp = Math.floor(s.hero.xp / 2);
   s.hero.hp = maxHp(s);
-  chronicle(s, `Ran out of vitality. Woke by the hearth, rested, minus ${lost} gold and this level's progress.`, 'miss', now);
+  chronicle(s, `Ran out of vitality. Woke by the hearth, rested, minus ${lost} gold and half this level's progress.`, 'miss', now);
   return true;
 }
 
@@ -303,7 +329,7 @@ export function dayTurn(s: Save, now: number): DawnReport | null {
   const boss = s.quest ? BOSSES.find((b) => b.id === s.quest!.boss)! : null;
   const rep: DawnReport = {
     day: t, nights: nights.length, missed: [], forgiven: [], streaksBroken: [], hpLost: 0, bossHits: 0,
-    bossName: boss?.name ?? null, gifts: [], fell: false, goldLost: 0, omen: omenFor(t).id, keptYesterday: 0,
+    bossName: boss?.name ?? null, gifts: [], fell: false, goldLost: 0, omen: omenFor(t).id, keptYesterday: 0, spared: 0,
   };
   const m = mods(s, false);
   const last = nights[nights.length - 1];
@@ -330,12 +356,13 @@ export function dayTurn(s: Save, now: number): DawnReport | null {
       }
       if (o.streak > 0) rep.streaksBroken.push({ title: o.title, was: o.streak });
       o.streak = 0;
+      o.cold = Math.min(COLD_MAX, (o.cold || 0) + 1);
       s.stats.misses++;
       s.mind.log.push({ ...evt, kind: 'miss' });
       let hp = 0;
       if (counts) {
         hp = Math.max(1, Math.round(DIFF[o.difficulty].hurt * (1 - m.missCut) * (omen.missHalf ? (omenM.omenScale > 1 ? 0.25 : 0.5) : 1)));
-        if (boss) { rep.bossHits += boss.power; }
+        if (boss) { rep.bossHits += Math.max(1, Math.round(boss.power * (1 - m.missCut))); }
       }
       rep.hpLost += hp;
       rep.missed.push({ title: o.title, hp });
@@ -349,17 +376,28 @@ export function dayTurn(s: Save, now: number): DawnReport | null {
     s.weekly.coalsGiven = true;
     if (s.hero.embers < MAX_EMBERS) { s.hero.embers++; rep.gifts.push('Banked Coals gave you an ember token.'); }
   }
-  const total = rep.hpLost + rep.bossHits;
+  // the hearth catches you: one dawn never takes more than 40% of max vitality,
+  // so a fall always comes after a warning, never out of a full bar
+  const cap = Math.max(1, Math.round(maxHp(s) * NIGHT_CAP));
+  let total = rep.hpLost + rep.bossHits;
+  if (total > cap) {
+    rep.spared = total - cap;
+    total = cap;
+    rep.gifts.push(`The hearth caught you: no single dawn takes more than ${cap} vitality, so ${rep.spared} was spared.`);
+  }
   const goldBefore = s.hero.gold;
   if (total > 0) rep.fell = hurtHero(s, total, now);
   rep.goldLost = goldBefore - s.hero.gold;
-  const fam = familiarById(s.hero.familiar);
-  if (fam?.dawnHeal && !rep.fell) {
+  if (!rep.fell) {
+    const fam = familiarById(s.hero.familiar);
     const before = s.hero.hp;
-    s.hero.hp = Math.min(maxHp(s), s.hero.hp + fam.dawnHeal);
-    if (s.hero.hp > before) rep.gifts.push(`${fam.name} curled up by you and restored ${s.hero.hp - before} vitality.`);
+    s.hero.hp = Math.min(maxHp(s), s.hero.hp + DAWN_MEND + (fam?.dawnHeal || 0));
+    const healed = s.hero.hp - before;
+    if (healed > 0) rep.gifts.push(fam?.dawnHeal ? `The hearth and ${fam.name} mended ${healed} vitality overnight.` : `The hearth mended ${healed} vitality overnight.`);
   }
   if (rep.missed.length) chronicle(s, `Dawn: ${rep.missed.length} missed, −${total} vitality.`, 'miss', now);
+  const cold = s.oaths.filter((o) => o.kind === 'daily' && o.cold > 0 && isDueOn(o, t));
+  if (cold.length) rep.gifts.push(`Rekindle: ${cold.length === 1 ? `"${cold[0].title}" pays` : `${cold.length} dailies pay`} extra today if you pick ${cold.length === 1 ? 'it' : 'them'} back up.`);
   for (const o of s.oaths) if (o.kind === 'habit') { o.ups = 0; o.downs = 0; }
   // errands done more than a week ago are cleared away
   s.oaths = s.oaths.filter((o) => !(o.kind === 'todo' && o.done && o.doneAt && now - o.doneAt > 7 * 86400000));

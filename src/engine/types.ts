@@ -31,6 +31,8 @@ export interface Oath {
   doneAt: number | null;
   createdAt: number;
   createdDay: DayKey;
+  /** dailies: missed nights in a row (0-3); keeping it again pays a rekindle bonus */
+  cold: number;
 }
 
 export interface Look {
@@ -91,6 +93,8 @@ export interface DawnReport {
   goldLost: number;
   omen: string;
   keptYesterday: number;
+  /** vitality the night cap spared */
+  spared?: number;
 }
 
 export interface DayState {

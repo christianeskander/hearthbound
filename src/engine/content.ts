@@ -1,10 +1,10 @@
 import type { Difficulty, Material, Slot, Stat } from './types';
 
 export const DIFF: Record<Difficulty, { label: string; xp: number; gold: number; mana: number; strike: number; hurt: number }> = {
-  trivial: { label: 'Tiny', xp: 4, gold: 1, mana: 1, strike: 2, hurt: 2 },
-  easy: { label: 'Easy', xp: 8, gold: 2, mana: 1, strike: 4, hurt: 4 },
-  medium: { label: 'Steady', xp: 14, gold: 4, mana: 2, strike: 6, hurt: 6 },
-  hard: { label: 'Hard', xp: 22, gold: 7, mana: 3, strike: 9, hurt: 9 },
+  trivial: { label: 'Tiny', xp: 4, gold: 1, mana: 1, strike: 2, hurt: 1 },
+  easy: { label: 'Easy', xp: 8, gold: 2, mana: 1, strike: 4, hurt: 3 },
+  medium: { label: 'Steady', xp: 14, gold: 4, mana: 2, strike: 6, hurt: 4 },
+  hard: { label: 'Hard', xp: 22, gold: 7, mana: 3, strike: 9, hurt: 6 },
 };
 export const DIFFS: Difficulty[] = ['trivial', 'easy', 'medium', 'hard'];
 
@@ -58,8 +58,8 @@ export const OMENS: Omen[] = [
 
 export interface Boss { id: string; name: string; blurb: string; hp: number; power: number; gold: number; xp: number; title: string; drop: [Material, number]; location: string; needs?: string; }
 export const BOSSES: Boss[] = [
-  { id: 'slime', name: 'The Slime of Later', blurb: 'Always one step ahead, saying "tomorrow". Every keep is a strike. Every missed daily lets it splash you back.', hp: 80, power: 3, gold: 60, xp: 100, title: 'Breaker of Later', drop: ['gel', 3], location: 'wood' },
-  { id: 'rat', name: 'The Gnawing Doubt', blurb: 'A big grey rat that chews on good intentions. Tougher, and it bites harder.', hp: 150, power: 5, gold: 120, xp: 180, title: 'Quiet Mind', drop: ['ember', 2], location: 'road', needs: 'slime' },
+  { id: 'slime', name: 'The Slime of Later', blurb: 'Always one step ahead, saying "tomorrow". Every keep is a strike. Every missed daily lets it splash you back.', hp: 130, power: 1, gold: 80, xp: 150, title: 'Breaker of Later', drop: ['gel', 3], location: 'wood' },
+  { id: 'rat', name: 'The Gnawing Doubt', blurb: 'A big grey rat that chews on good intentions. Tougher, and it bites harder.', hp: 260, power: 2, gold: 160, xp: 300, title: 'Quiet Mind', drop: ['ember', 2], location: 'road', needs: 'slime' },
 ];
 
 export interface Location { id: string; name: string; level: number; }
@@ -97,30 +97,30 @@ export const GEAR: Gear[] = [
   { id: 'tunic_moss', slot: 'torso', name: 'Moss Tunic', price: 0, source: 'start', art: [shirt('short', 'forest'), belt] },
   { id: 'wool_red', slot: 'torso', name: 'Red Wool Shirt', price: 0, source: 'start', art: [shirt('long', 'maroon'), belt] },
   { id: 'shirt_sky', slot: 'torso', name: 'Sky Shirt', price: 30, source: 'market', art: [shirt('long', 'sky'), belt] },
-  { id: 'jerkin', slot: 'torso', name: 'Leather Jerkin', price: 80, source: 'market', bonus: { strike: 0.05 }, bonusText: '+5% strikes', art: [shirt('long', 'walnut'), { part: 'leather_', z: 60 }, belt] },
-  { id: 'chain', slot: 'torso', name: 'Chain Shirt', price: 140, source: 'market', bonus: { strike: 0.1 }, bonusText: '+10% strikes', art: [shirt('long', 'charcoal'), { part: 'chain_', z: 50, pal: 'metal', color: 'iron' }, belt] },
+  { id: 'jerkin', slot: 'torso', name: 'Leather Jerkin', price: 150, source: 'market', bonus: { strike: 0.05 }, bonusText: '+5% strikes', art: [shirt('long', 'walnut'), { part: 'leather_', z: 60 }, belt] },
+  { id: 'chain', slot: 'torso', name: 'Chain Shirt', price: 280, source: 'market', bonus: { strike: 0.1 }, bonusText: '+10% strikes', art: [shirt('long', 'charcoal'), { part: 'chain_', z: 50, pal: 'metal', color: 'iron' }, belt] },
   { id: 'plate', slot: 'torso', name: 'Hearthguard Plate', price: 0, source: 'forge', bonus: { maxHp: 15, strike: 0.1 }, bonusText: '+15 vitality, +10% strikes', art: [shirt('long', 'charcoal'), { part: 'plate_', z: 60, pal: 'metal', color: 'steel' }] },
   // cloak
-  { id: 'cape_red', slot: 'cloak', name: 'Red Cloak', price: 45, source: 'market', bonus: { gold: 0.03 }, bonusText: '+3% gold', art: cape('red') },
-  { id: 'cape_forest', slot: 'cloak', name: 'Forest Cloak', price: 45, source: 'market', bonus: { drop: 0.1 }, bonusText: '+10% drops', art: cape('forest') },
-  { id: 'cape_navy', slot: 'cloak', name: 'Night Cloak', price: 60, source: 'market', bonus: { xp: 0.03 }, bonusText: '+3% XP', art: cape('navy') },
+  { id: 'cape_red', slot: 'cloak', name: 'Red Cloak', price: 90, source: 'market', bonus: { gold: 0.03 }, bonusText: '+3% gold', art: cape('red') },
+  { id: 'cape_forest', slot: 'cloak', name: 'Forest Cloak', price: 90, source: 'market', bonus: { drop: 0.1 }, bonusText: '+10% drops', art: cape('forest') },
+  { id: 'cape_navy', slot: 'cloak', name: 'Night Cloak', price: 120, source: 'market', bonus: { xp: 0.03 }, bonusText: '+3% XP', art: cape('navy') },
   { id: 'cape_ember', slot: 'cloak', name: 'Ember Cloak', price: 0, source: 'forge', bonus: { xp: 0.05, gold: 0.05 }, bonusText: '+5% XP and gold', art: cape('orange') },
   // head
-  { id: 'hood_brown', slot: 'head', name: 'Traveller\'s Hood', price: 35, source: 'market', bonus: { missCut: 0.05 }, bonusText: 'Misses hurt 5% less', art: [{ part: 'hood', z: 130, pal: 'cloth', color: 'brown' }] },
+  { id: 'hood_brown', slot: 'head', name: 'Traveller\'s Hood', price: 70, source: 'market', bonus: { missCut: 0.05 }, bonusText: 'Misses hurt 5% less', art: [{ part: 'hood', z: 130, pal: 'cloth', color: 'brown' }] },
   { id: 'hood_scholar', slot: 'head', name: 'Scholar\'s Hood', price: 0, source: 'forge', bonus: { xp: 0.05 }, bonusText: '+5% XP', art: [{ part: 'hood', z: 130, pal: 'cloth', color: 'navy' }] },
-  { id: 'cap', slot: 'head', name: 'Leather Cap', price: 40, source: 'market', bonus: { gold: 0.02 }, bonusText: '+2% gold', art: [{ part: 'cap', z: 130 }] },
-  { id: 'cap_feather', slot: 'head', name: 'Feathered Cap', price: 70, source: 'market', bonus: { gold: 0.05 }, bonusText: '+5% gold', art: [{ part: 'cap', z: 130 }, { part: 'cap_feather', z: 131 }] },
-  { id: 'kettle', slot: 'head', name: 'Kettle Helm', price: 120, source: 'market', bonus: { strike: 0.06, maxHp: 5 }, bonusText: '+6% strikes, +5 vitality', art: [{ part: 'kettle', z: 135 }] },
+  { id: 'cap', slot: 'head', name: 'Leather Cap', price: 80, source: 'market', bonus: { gold: 0.02 }, bonusText: '+2% gold', art: [{ part: 'cap', z: 130 }] },
+  { id: 'cap_feather', slot: 'head', name: 'Feathered Cap', price: 140, source: 'market', bonus: { gold: 0.05 }, bonusText: '+5% gold', art: [{ part: 'cap', z: 130 }, { part: 'cap_feather', z: 131 }] },
+  { id: 'kettle', slot: 'head', name: 'Kettle Helm', price: 240, source: 'market', bonus: { strike: 0.06, maxHp: 5 }, bonusText: '+6% strikes, +5 vitality', art: [{ part: 'kettle', z: 135 }] },
   // legs
   { id: 'trousers_brown', slot: 'legs', name: 'Brown Trousers', price: 0, source: 'start', art: [{ part: 'pants_', z: 20, pal: 'cloth', color: 'brown' }] },
   { id: 'trousers_slate', slot: 'legs', name: 'Slate Trousers', price: 0, source: 'start', art: [{ part: 'pants_', z: 20, pal: 'cloth', color: 'slate' }] },
   { id: 'skirt_navy', slot: 'legs', name: 'Navy Skirt', price: 0, source: 'start', art: [{ part: 'skirt_', z: 20, pal: 'cloth', color: 'navy' }] },
   { id: 'trousers_teal', slot: 'legs', name: 'Teal Trousers', price: 25, source: 'market', art: [{ part: 'pants_', z: 20, pal: 'cloth', color: 'teal' }] },
-  { id: 'greaves', slot: 'legs', name: 'Plate Greaves', price: 150, source: 'market', bonus: { maxHp: 10 }, bonusText: '+10 vitality', art: [{ part: 'pants_', z: 20, pal: 'cloth', color: 'charcoal' }, { part: 'greaves_', z: 21, pal: 'metal', color: 'steel' }] },
+  { id: 'greaves', slot: 'legs', name: 'Plate Greaves', price: 300, source: 'market', bonus: { maxHp: 10 }, bonusText: '+10 vitality', art: [{ part: 'pants_', z: 20, pal: 'cloth', color: 'charcoal' }, { part: 'greaves_', z: 21, pal: 'metal', color: 'steel' }] },
   // feet
   { id: 'shoes', slot: 'feet', name: 'Plain Shoes', price: 0, source: 'start', art: [{ part: 'shoes_', z: 15, pal: 'cloth', color: 'brown' }] },
-  { id: 'boots', slot: 'feet', name: 'Walking Boots', price: 40, source: 'market', bonus: { comboWindow: 5 }, bonusText: 'Combo window +5 min', art: [{ part: 'boots_', z: 25, pal: 'cloth', color: 'leather' }] },
-  { id: 'sabatons', slot: 'feet', name: 'Iron Sabatons', price: 120, source: 'market', bonus: { maxHp: 5, strike: 0.04 }, bonusText: '+5 vitality, +4% strikes', art: [{ part: 'sabatons_', z: 25, pal: 'metal', color: 'iron' }] },
+  { id: 'boots', slot: 'feet', name: 'Walking Boots', price: 80, source: 'market', bonus: { comboWindow: 5 }, bonusText: 'Combo window +5 min', art: [{ part: 'boots_', z: 25, pal: 'cloth', color: 'leather' }] },
+  { id: 'sabatons', slot: 'feet', name: 'Iron Sabatons', price: 240, source: 'market', bonus: { maxHp: 5, strike: 0.04 }, bonusText: '+5 vitality, +4% strikes', art: [{ part: 'sabatons_', z: 25, pal: 'metal', color: 'iron' }] },
 ];
 export const gearById = (id: string) => GEAR.find((g) => g.id === id);
 
@@ -134,11 +134,11 @@ export const OUTFITS: Outfit[] = [
 // ---------------------------------------------------------------- familiars
 export interface Familiar { id: string; name: string; kind: string; price: number; gift: string; mods: Partial<Mods>; dawnHeal?: number; }
 export const FAMILIARS: Familiar[] = [
-  { id: 'soot', name: 'Soot', kind: 'a hearth cat, coal-grey', price: 0, gift: 'Restores 2 vitality each dawn', mods: {}, dawnHeal: 2 },
-  { id: 'pip', name: 'Pip', kind: 'a field mouse', price: 30, gift: '+10% drops', mods: { drop: 0.1 } },
-  { id: 'inkling', name: 'Inkling', kind: 'a little raven', price: 45, gift: '+5% XP', mods: { xp: 0.05 } },
-  { id: 'bramble', name: 'Bramble', kind: 'a red fox', price: 60, gift: '+5% gold', mods: { gold: 0.05 } },
-  { id: 'hazel', name: 'Hazel', kind: 'a brown hound', price: 60, gift: '+8% strikes', mods: { strike: 0.08 } },
+  { id: 'soot', name: 'Soot', kind: 'a hearth cat, coal-grey', price: 0, gift: 'Mends 2 extra vitality each dawn', mods: {}, dawnHeal: 2 },
+  { id: 'pip', name: 'Pip', kind: 'a field mouse', price: 50, gift: '+10% drops', mods: { drop: 0.1 } },
+  { id: 'inkling', name: 'Inkling', kind: 'a little raven', price: 70, gift: '+5% XP', mods: { xp: 0.05 } },
+  { id: 'bramble', name: 'Bramble', kind: 'a red fox', price: 90, gift: '+5% gold', mods: { gold: 0.05 } },
+  { id: 'hazel', name: 'Hazel', kind: 'a brown hound', price: 90, gift: '+8% strikes', mods: { strike: 0.08 } },
 ];
 export const familiarById = (id: string) => FAMILIARS.find((f) => f.id === id);
 
@@ -162,3 +162,19 @@ export const MAX_EMBERS = 3;
 export const REST_COST = 10;
 export const REST_HEAL = 15;
 export const KINDLE_COST = 40;
+
+// ---------------------------------------------------------------- balance knobs (see balance.md)
+/** Streak bonus per day kept in a row, and the day it stops growing (+30% at 12 days). */
+export const STREAK_STEP = 0.025;
+export const STREAK_CAP_DAYS = 12;
+/** Rekindle: a daily missed on recent nights pays +25% per miss in a row (up to +75%) when you come back to it. */
+export const COLD_STEP = 0.25;
+export const COLD_MAX = 3;
+/** Each extra + on the same habit in one day pays less: x0.6 per tap, never below x0.1. */
+export const HABIT_FADE = 0.6;
+export const HABIT_FLOOR = 0.1;
+/** Everyone mends a little at dawn; no single dawn takes more than this share of max vitality. */
+export const DAWN_MEND = 2;
+export const NIGHT_CAP = 0.4;
+/** Keeping a daily or finishing an errand warms you: +1 vitality. */
+export const KEEP_WARMTH = 1;

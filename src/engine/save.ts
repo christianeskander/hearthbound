@@ -1,9 +1,9 @@
 import { CALLINGS, FAMILIARS, GEAR, OUTFITS, REWARD_IDEAS, gearById } from './content';
-import { addOath, maxHp, maxMana, omenFor, uid } from './rules';
+import { addOath, gainXp, maxHp, maxMana, omenFor, uid } from './rules';
 import { hearthDay, type DayKey } from './time';
 import type { Difficulty, Look, Oath, Save, Slot, Stat } from './types';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 export const KEY = 'hearthbound.save';
 export const BACKUP_KEY = 'hearthbound.save.backup';
 
@@ -82,6 +82,7 @@ function cleanOath(o: any, now: number): Oath | null {
     streak: num(o.streak, 0, 0), bestStreak: num(o.bestStreak, num(o.streak, 0, 0), 0), doneDay: o.doneDay ? dayKey(o.doneDay, '') || null : null,
     up: kind === 'habit' ? o.up !== false : false, down: kind === 'habit' ? !!o.down : false, ups: num(o.ups, 0, 0), downs: num(o.downs, 0, 0),
     done: !!o.done, doneAt: o.doneAt ? num(o.doneAt, now) : null, createdAt: num(o.createdAt, now), createdDay: dayKey(o.createdDay, day0),
+    cold: kind === 'daily' ? Math.floor(num(o.cold, 0, 0, 3)) : 0,
   };
 }
 
@@ -150,6 +151,9 @@ export function migrate(raw: unknown, now = Date.now()): Save {
     weekly: isObj(r.weekly) ? { week: str(r.weekly.week, ''), mercyUsed: !!r.weekly.mercyUsed, coalsGiven: !!r.weekly.coalsGiven } : { week: '', mercyUsed: false, coalsGiven: false },
     stats: { keeps: 0, slips: 0, misses: 0, focusMinutes: 0, bossesDown: 0, ...(isObj(r.stats) ? r.stats : {}) },
   };
+  // v3 changed the level curve (early levels are shorter): any XP already past
+  // the new bar becomes the levels (and skill points) it is now worth.
+  gainXp(s, 0, now);
   s.hero.hp = Math.min(maxHp(s), Math.max(1, s.hero.hp));
   s.hero.mana = Math.min(maxMana(s), s.hero.mana);
   return s;
