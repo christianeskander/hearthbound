@@ -4,7 +4,12 @@ import { composeHero } from '../art/compose';
 import { BOSSES, LOCATIONS, OMENS } from '../engine/content';
 import { omenFor } from '../engine/rules';
 import type { Save } from '../engine/types';
-import { onFx } from './store';
+import { act, onFx } from './store';
+import { patFamiliar, stageOf } from '../engine/pets';
+import { usePhase } from './phase';
+import { sfx } from './audio';
+import { extras } from './actions';
+import { getPrefs, onPrefs, setPrefs } from './prefs';
 import { Icon } from './icons';
 
 const LINES = [
@@ -44,7 +49,12 @@ export function HallView({ s, active, onTravel }: { s: Save; active: boolean; on
       if (dead || !host.current) return;
       hall.current = createHall(host.current, host.current.clientWidth || 390, {
         tapHero: () => say(LINES[Math.floor(Math.random() * LINES.length)]),
-        tapPet: () => say(PET_LINES[s.hero.familiar] || 'Your familiar hops.'),
+        tapPet: () => {
+          const r = act('Pat', (x, n) => patFamiliar(x, n));
+          sfx.purr();
+          say(r === false ? (PET_LINES[s.hero.familiar] || 'Your familiar hops.') : `${PET_LINES[s.hero.familiar] || 'Your familiar hops.'} (+1 bond today)`);
+          if (r) extras({ evolved: r }, 300);
+        },
         float: (text, x, y, kind) => addFloat({ text, x: x * (hall.current?.scale || 2), y: y * (hall.current?.scale || 2), kind }),
         ready: () => setReady(true),
       });
@@ -60,6 +70,12 @@ export function HallView({ s, active, onTravel }: { s: Save; active: boolean; on
     composeHero(s.hero.look, s.hero.equipped).then((c) => hall.current?.scene.setHero(c));
   }, [ready, lookKey]);
   useEffect(() => { if (ready) hall.current?.scene.setPet(s.hero.familiar); }, [ready, s.hero.familiar]);
+  const stage = stageOf(s, s.hero.familiar);
+  useEffect(() => { if (ready) hall.current?.scene.setPetStage(stage.scale, stage.id >= 3 ? 2 : stage.id >= 2 ? 1 : 0); }, [ready, stage.id, s.hero.familiar]);
+  const phase = usePhase();
+  useEffect(() => { if (ready) hall.current?.scene.setPhase(phase); }, [ready, phase]);
+  const [muted, setMuted] = useState(getPrefs().muted);
+  useEffect(() => onPrefs(() => setMuted(getPrefs().muted)), []);
   useEffect(() => { if (ready) hall.current?.scene.setPlace(s.settings.location); }, [ready, s.settings.location]);
   useEffect(() => { if (ready) hall.current?.scene.setBoss(s.quest?.boss ?? null); }, [ready, s.quest?.boss]);
   useEffect(() => { hall.current?.sleep(!active); }, [active, ready]);
@@ -79,6 +95,8 @@ export function HallView({ s, active, onTravel }: { s: Save; active: boolean; on
       if (f.bright) say('A bright keep!');
       else if (f.combo > 1) say(`Combo x${f.combo}!`);
       if (f.bossDown) { h.scene.bossDown(); }
+    } else if (f.type === 'evolve') {
+      h.scene.evolveFx();
     } else if (f.type === 'hurt') {
       h.scene.hurtFx();
       addFloat({ text: `−${f.hp}`, x: a.x * sc, y: a.y * sc, kind: 'hurt' });
@@ -96,7 +114,10 @@ export function HallView({ s, active, onTravel }: { s: Save; active: boolean; on
         <button class="chip" onClick={onTravel} aria-label={`Location: ${loc.name}. Travel`}>
           <Icon name="leaf" size={12} /> {loc.name}
         </button>
-        <span class="chip omen" title={omen.text}><Icon name="moon" size={12} /> {omen.name}: {omen.text}</span>
+        {s.mode !== 'kid' && <span class="chip omen" title={omen.text}><Icon name="moon" size={12} /> {omen.name}: {omen.text}</span>}
+      </div>
+      <div class="hall-mute">
+        <button class="chip mute" onClick={() => setPrefs({ muted: !muted })} aria-label={muted ? 'Sound is off. Turn sound on' : 'Sound is on. Mute'} aria-pressed={muted}>{muted ? '🔇' : '🔊'}</button>
       </div>
       {boss && s.quest && (
         <div class="bossbar" role="group" aria-label={`${boss.name}, ${s.quest.hp} of ${s.quest.max}`}>

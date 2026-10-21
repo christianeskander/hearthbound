@@ -93,3 +93,38 @@ loads, so nobody loses progress. Owned gear stays owned at the old prices.
 | Struggling 30% | 7.6 / 11.9 / 15.3 | 11 → 9 | day 11 | 0 (was 0.2, all in month 1) | 13 / 21 days |
 | Struggling, hands-off | 7.2 / 10.8 / 13.3 | 11 → 9 | day 11 | 0.7 (was 2.3) | 12 / 21 days |
 | Min-maxer (15 taps/day) | 13.5 / 20.2 / 26.3 | 31 → 25 (was 95) | day 4 (was 1) | 0 | 4 / 5 days (was 1 / 1) |
+
+
+# v4 (Hearthbound v2): new rewards, same economy
+
+v2 added four foes, a story, a monthly season track, badges and familiar growth.
+Every new source of gold was sized so the v3 economy (commit 98b5c52) stays put.
+`npm run sim` covers all of it: simulated players fight every foe in order,
+claim story chapters and take season tiers.
+
+| Player (24 heroes, day 180) | v3 gold/day | v4 gold/day | Change | Falls per fortnight |
+|---|---|---|---|---|
+| Steady 90% | 22.8 | 24.6 | +8% | 0 |
+| Average 60% | 14.5 | 16.0 | +10% | 0 |
+| Struggling 30% | 8.9 | 10.1 | +13% | 0 |
+| Struggling, hands-off | — | 9.5 | — | 1.2 (v3: 0.7) |
+| Min-maxer (15 taps/day) | 25 | 27.0 | +8% | 0 |
+
+Design notes:
+
+- **New foes pay less gold per HP than the Slime and the Rat** (Drift 25, Maybe 30,
+  Gleam 35, Weight 40 gold; power 1 each, so a missed daily costs 1 vitality,
+  the same as the Slime). Their main reward is a title and a cosmetic cloak, not gold.
+  My first pass paid +25% gold and doubled the hands-off falls, so it was cut.
+- **Season track: 15 gold a month in total** (3 + 5 + 7); the other tiers are
+  materials, an ember, a title and a cloak. It resets monthly and is free.
+- **Story: about 220 gold once**, spread over 8 chapters and many weeks.
+- **Badges give nothing but the badge.** No gold, so there is nothing to grind.
+- **Familiar growth is cosmetic** (size, aura, a pat). Migration sets every owned
+  familiar to Young and the active one higher by its keeps, so nobody starts over.
+- **Rest days** stop all dawn penalties; the sim does not use them, so real
+  struggling players do better than the table.
+- **Kid and gentle heroes** have no penalties at all, so balance does not apply to them.
+- **The hands-off struggler** falls 1.2 times per fortnight instead of 0.7, because the
+  sim walks them into every new foe automatically, and each foe bites at dawn. In the
+  app a foe is only fought after you invite it on the Hall, and "Turn back" is always there.

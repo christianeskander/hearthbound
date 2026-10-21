@@ -8,11 +8,14 @@ import {
 } from '../engine/rules';
 import { accept, dismiss, mindLevel, suggest } from '../engine/mind';
 import type { Save } from '../engine/types';
-import { act, fx, toast } from './store';
-import { keep } from './actions';
+import { act, canRestLastNight, fx, openSheet, restLastNight, toast } from './store';
+import { extras, keep } from './actions';
+import { ChoreCard } from './Chores';
+import { StoryCard, TinyCard, WeekCard, restingToday } from './HallExtras';
+import { refreshBadge } from './badge';
 import { Icon } from './icons';
 import { Sheet } from './Sheet';
-import { sfx } from './sound';
+import { sfx } from './audio';
 
 export function Bars({ s }: { s: Save }) {
   const h = s.hero, mh = maxHp(s), mm = maxMana(s), nx = xpToNext(h.level);
@@ -30,10 +33,10 @@ export function HeroStrip({ s }: { s: Save }) {
   const combo = s.day.combo > 1 && Date.now() - s.day.lastKeepAt < 20 * 60000 ? s.day.combo : 0;
   return (
     <div class="herostrip">
-      <div class="who">
-        <b>{h.name}</b>
+      <button class="who" onClick={() => openSheet('family')} aria-label={`${h.name}, level ${h.level}. Switch hero`}>
+        <b>{h.name} <span class="swap" aria-hidden="true">▾</span></b>
         <span>Lv {h.level} {cap(h.calling)}{h.title ? ` · ${h.title}` : ''}</span>
-      </div>
+      </button>
       <div class="purse">
         <span class="gold" aria-label={`${h.gold} gold`}><Icon name="coin" /> {h.gold}</span>
         <span class="embers" aria-label={`${h.embers} ember tokens`} title="Ember tokens forgive a missed daily"><Icon name="ember" /> {h.embers}</span>
@@ -113,6 +116,16 @@ function Dawn({ s }: { s: Save }) {
         <p>Missed: {r.missed.map((m) => `“${m.title}”`).join(', ')}. {r.hpLost > 0 ? `−${r.hpLost} vitality.` : ''}{r.bossHits ? ` ${r.bossName} hit back for ${r.bossHits}.` : ''}</p>
       )}
       {r.streaksBroken.length > 0 && <p class="dim">Streaks reset: {r.streaksBroken.map((b) => `${b.title} (${b.was})`).join(', ')}. They start again today.</p>}
+      {r.rested ? <p class="good">{r.rested} rest {r.rested === 1 ? 'day' : 'days'}: nothing was counted against you.</p> : null}
+      {canRestLastNight() && (r.missed.length > 0 || r.forgiven.length > 0) && (
+        <div class="rest-offer">
+          <p class="small">Were you sick or away? You can count those days as rest instead. Nothing will be lost for them.</p>
+          <div class="row">
+            <button class="secondary small" onClick={() => { if (restLastNight('sick')) toast('Counted as sick days. Vitality, streaks and embers are back as they were.', 'good', false, 6000); }}>I was sick</button>
+            <button class="secondary small" onClick={() => { if (restLastNight('away')) toast('Counted as days away. Nothing was lost.', 'good', false, 6000); }}>I was away</button>
+          </div>
+        </div>
+      )}
       {r.fell && <p class="bad">You ran out of vitality and woke by the hearth, rested. {r.goldLost} gold and half this level's progress were lost. Your gear, titles and streak records stay.</p>}
       {r.gifts.map((g, i) => <p key={'g' + i} class="good">{g}</p>)}
       {omen && <p class="omen-line"><Icon name="moon" size={12} /> Today's omen: <b>{omen.name}</b>, {omen.text.toLowerCase()}.</p>}
@@ -159,19 +172,25 @@ function Quest({ s }: { s: Save }) {
       </div>
     );
   }
+  const ahead = BOSSES.filter((b) => !s.defeated.includes(b.id)).slice(0, 2);
+  const beaten = BOSSES.filter((b) => s.defeated.includes(b.id));
+  const start = (id: string, name: string) => { act('Start quest', (x, n) => inviteBoss(x, id, n)); toast(`${name} is on the road ahead.`, 'info'); };
   return (
     <div class="card quest">
-      <div class="kicker">Quest</div>
-      {BOSSES.map((b) => {
+      <div class="kicker">Quest <span class="count">{beaten.length}/{BOSSES.length} foes beaten</span></div>
+      {ahead.map((b) => {
         const why = canInvite(s, b.id);
-        const done = s.defeated.includes(b.id);
         return (
           <div class="foe-row" key={b.id}>
-            <div><b>{b.name}</b>{done && <span class="tag">beaten</span>}<p class="dim">{b.blurb}</p></div>
-            <button class="secondary" disabled={!!why} title={why || ''} onClick={() => { act('Start quest', (x, n) => inviteBoss(x, b.id, n)); toast(`${b.name} is on the road ahead.`, 'info'); }}>{why ? 'Locked' : done ? 'Again' : 'Face it'}</button>
+            <div><b>{b.name}</b>{b.theme && <span class="tag theme">{b.theme}</span>}<p class="dim">{b.blurb}</p></div>
+            <button class="secondary" disabled={!!why} title={why || ''} onClick={() => start(b.id, b.name)}>{why ? 'Locked' : 'Face it'}</button>
           </div>
         );
       })}
+      {!ahead.length && <p class="dim">Every foe is beaten. You can face any of them again for the fun of it.</p>}
+      {beaten.length > 0 && (
+        <div class="again"><span class="dim small">Again:</span>{beaten.map((b) => <button key={b.id} class="pill small" onClick={() => start(b.id, b.name)}>{b.name.replace(/^The /, '')}</button>)}</div>
+      )}
     </div>
   );
 }
@@ -181,7 +200,7 @@ function Focus({ s, now }: { s: Save; now: number }) {
   useEffect(() => { if (!s.focus) return; const t = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(t); }, [!!s.focus]);
   const left = focusLeft(s, Date.now());
   const finished = s.focus && left <= 0;
-  useEffect(() => { if (finished && s.settings.sound) sfx.level(); }, [finished]);
+  useEffect(() => { if (finished) sfx.level(); }, [finished]);
   if (s.focus) {
     const mm = Math.floor(left / 60000), ss = Math.floor((left % 60000) / 1000);
     const pay = focusPay(s, s.focus.minutes);
@@ -196,7 +215,7 @@ function Focus({ s, now }: { s: Save; now: number }) {
           {!finished && <button class="ghost" onClick={() => act('Cancel rite', (x) => cancelFocus(x))}>Stop early</button>}
           {finished && <button class="primary" onClick={() => {
             const r = act('Finish rite', (x, n) => finishFocus(x, n));
-            if (r) { fx({ type: 'keep', gold: r.gold, xp: r.xp, strike: r.strike, bright: false, combo: 1, drop: null, levels: r.levels, bossDown: r.bossDown }); toast(`Rite complete: +${r.xp} XP · +${r.gold} gold · +${r.mana} mana`, 'good'); }
+            if (r) { fx({ type: 'keep', gold: r.gold, xp: r.xp, strike: r.strike, bright: false, combo: 1, drop: null, levels: r.levels, bossDown: r.bossDown }); toast(`Rite complete: +${r.xp} XP · +${r.gold} gold · +${r.mana} mana`, 'good'); extras(r, 900); }
           }}>Claim</button>}
         </div>
       </div>
@@ -225,6 +244,9 @@ function Hearth({ s }: { s: Save }) {
           Kindle ember <small>{KINDLE_COST} mana</small>
         </button>
       </div>
+      <div class="row">
+        <button class="secondary" onClick={() => openSheet('rest')}>{restingToday(s) ? 'Resting today' : 'Rest days'} <small>{restingToday(s) ? 'nothing is counted' : 'sick or away'}</small></button>
+      </div>
       <p class="dim pack">Pack: {Object.entries(s.materials).filter(([, v]) => v > 0).map(([k, v]) => `${MATERIALS[k as keyof typeof MATERIALS].name} ×${v}`).join(', ') || 'empty for now. Keeps sometimes drop forge materials.'}</p>
     </div>
   );
@@ -234,14 +256,20 @@ export function HallTab({ s }: { s: Save }) {
   const [, tick] = useState(0);
   useEffect(() => { const t = setInterval(() => tick((n) => n + 1), 30000); return () => clearInterval(t); }, []);
   const now = Date.now();
+  useEffect(() => { refreshBadge(); }, [s]);
+  const gentle = s.mode === 'gentle';
   return (
     <div class="tab hall-tab">
       <HeroStrip s={s} />
       <Bars s={s} />
       <Dawn s={s} />
+      {gentle && <TinyCard s={s} />}
+      <WeekCard s={s} />
       <NextOath s={s} now={now} />
       <TodayList s={s} now={now} />
-      <MindCard s={s} now={now} />
+      <StoryCard s={s} />
+      <ChoreCard s={s} />
+      {!gentle && <MindCard s={s} now={now} />}
       <Quest s={s} />
       <Focus s={s} now={now} />
       <Hearth s={s} />

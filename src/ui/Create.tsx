@@ -5,7 +5,9 @@ import type { Slot } from '../engine/types';
 import { HAIRS, HAIR_COLORS, PET_ART, SKINS, SKIN_NAMES } from '../art/look';
 import { RAMPS } from '../art/palettes';
 import { Stage } from './Stage';
-import { replaceSave } from './store';
+import { addHero, replaceSave, setAdding, toast } from './store';
+import { MODE_NAMES } from '../engine/family';
+import type { HeroMode } from '../engine/types';
 
 function equippedFor(outfit: string, sex: 'female' | 'male') {
   const o = OUTFITS.find((x) => x.id === outfit)!;
@@ -25,8 +27,8 @@ export function useWidth(ref: { current: HTMLElement | null }, fallback = 360) {
   return w;
 }
 
-export function Create({ onDone, onImport }: { onDone: () => void; onImport: () => void }) {
-  const [n, setN] = useState<NewHero>({ name: '', calling: 'warden', outfit: 'wayfarer', familiar: 'soot', look: { sex: 'female', skin: 'light', hair: 'ponytail', hairColor: 'chestnut' } });
+export function Create({ onDone, onImport, adding = false }: { onDone: () => void; onImport: () => void; adding?: boolean }) {
+  const [n, setN] = useState<NewHero>({ name: '', calling: 'warden', outfit: 'wayfarer', familiar: 'soot', look: { sex: 'female', skin: 'light', hair: 'ponytail', hairColor: 'chestnut' }, mode: 'standard' });
   const [err, setErr] = useState<string | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const w = useWidth(box);
@@ -35,7 +37,8 @@ export function Create({ onDone, onImport }: { onDone: () => void; onImport: () 
   const begin = () => {
     const e = validateNewHero(n);
     if (e) { setErr(e); document.getElementById('hero-name')?.focus(); return; }
-    replaceSave(newSave(n, Date.now()));
+    if (adding) { try { addHero(n); setAdding(false); toast(`${n.name.trim()} joined the family.`, 'good'); } catch (x) { setErr((x as Error).message); return; } }
+    else replaceSave(newSave(n, Date.now()));
     onDone();
   };
   const calling = CALLINGS.find((c) => c.id === n.calling)!;
@@ -49,11 +52,21 @@ export function Create({ onDone, onImport }: { onDone: () => void; onImport: () 
         </div>
       </div>
       <div class="create-body">
-        <h1>Light the hearth</h1>
-        <p class="lead">Make the person who walks the road. You can change their look later.</p>
+        <h1>{adding ? 'A new hero' : 'Light the hearth'}</h1>
+        <p class="lead">{adding ? 'Each hero on this phone has their own oaths, gold and story.' : 'Make the person who walks the road. You can change their look later.'}</p>
+        {adding && <button class="ghost small" onClick={() => setAdding(false)}>Cancel</button>}
+
+        <h3>Who is it for?</h3>
+        <div class="cards3 modes" role="radiogroup" aria-label="Kind of game">
+          {(['standard', 'gentle', 'kid'] as HeroMode[]).map((m) => (
+            <button key={m} role="radio" aria-checked={n.mode === m} class={n.mode === m ? 'pick on' : 'pick'} onClick={() => set({ mode: m })}>
+              <b>{MODE_NAMES[m].name}</b><span>{MODE_NAMES[m].text}</span>
+            </button>
+          ))}
+        </div>
 
         <label class="field">Name
-          <input id="hero-name" value={n.name} maxLength={24} placeholder="e.g. Christian" autoComplete="off" onInput={(e) => set({ name: (e.target as HTMLInputElement).value })} />
+          <input id="hero-name" value={n.name} maxLength={24} placeholder={n.mode === 'kid' ? 'e.g. Emma' : n.mode === 'gentle' ? 'e.g. Teegan' : 'e.g. Christian'} autoComplete="off" onInput={(e) => set({ name: (e.target as HTMLInputElement).value })} />
         </label>
 
         <h3>Body</h3>
@@ -73,7 +86,7 @@ export function Create({ onDone, onImport }: { onDone: () => void; onImport: () 
         </div>
 
         <h3>Calling</h3>
-        <p class="hint">Your class. Each one bends the numbers a real amount.</p>
+        <p class="hint">{n.mode === 'kid' ? 'Pick any; it only changes small numbers.' : 'Your class. Each one bends the numbers a real amount.'}</p>
         <div class="cards2" role="radiogroup" aria-label="Calling">
           {CALLINGS.map((c) => (
             <button key={c.id} role="radio" aria-checked={n.calling === c.id} class={n.calling === c.id ? 'pick on' : 'pick'} onClick={() => set({ calling: c.id })}>
@@ -105,7 +118,7 @@ export function Create({ onDone, onImport }: { onDone: () => void; onImport: () 
 
         {err && <p class="error" role="alert">{err}</p>}
         <button class="primary big" onClick={begin}>Light the hearth</button>
-        <p class="hint center">Everything stays on this phone. No account, no network. <button class="link" onClick={onImport}>Restore a saved file</button></p>
+        {!adding && <p class="hint center">Everything stays on this phone. No account, no network. <button class="link" onClick={onImport}>Restore a saved file</button></p>}
       </div>
     </div>
   );

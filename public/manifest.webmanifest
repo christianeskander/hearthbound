@@ -1,4 +1,5 @@
 {
+  "id": "./",
   "name": "Hearthbound",
   "short_name": "Hearthbound",
   "description": "A small pixel RPG for keeping your daily oaths.",
@@ -8,8 +9,17 @@
   "orientation": "portrait",
   "background_color": "#17120f",
   "theme_color": "#17120f",
+  "categories": ["productivity", "lifestyle", "games"],
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Keep my next oath", "short_name": "Next oath", "url": "./?action=next", "icons": [{ "src": "icons/sc-next.png", "sizes": "96x96", "type": "image/png" }] },
+    { "name": "Start a focus rite", "short_name": "Focus", "url": "./?action=focus", "icons": [{ "src": "icons/sc-focus.png", "sizes": "96x96", "type": "image/png" }] },
+    { "name": "Log a tiny win", "short_name": "Tiny win", "url": "./?action=tiny", "icons": [{ "src": "icons/sc-tiny.png", "sizes": "96x96", "type": "image/png" }] },
+    { "name": "This week's report card", "short_name": "Week", "url": "./?action=week", "icons": [{ "src": "icons/sc-week.png", "sizes": "96x96", "type": "image/png" }] }
   ]
 }

@@ -1,6 +1,16 @@
 import * as Phaser from 'phaser';
 import { ALL_LAYER_KEYS, PLACES, STRIDE_PX, VIEW_H, WALK_MS } from './layers';
 import { BOSS_ART, PET_ART } from '../art/look';
+import type { Phase } from '../engine/phase';
+
+// Day and night: a multiply wash over the backdrop (and a lighter one over the
+// characters at night), stars in the sky, and a warm lantern glow around the hero.
+const WASH: Record<Phase, { bg: number; fg: number; stars: number; glow: number }> = {
+  dawn: { bg: 0xffd9c8, fg: 0xfff0e8, stars: 0, glow: 0 },
+  day: { bg: 0xffffff, fg: 0xffffff, stars: 0, glow: 0 },
+  dusk: { bg: 0xf4b48c, fg: 0xffe2cc, stars: 0.35, glow: 0.18 },
+  night: { bg: 0x5c6cae, fg: 0xa9b4e0, stars: 1, glow: 0.32 },
+};
 
 const SPEED = STRIDE_PX / (8 * WALK_MS); // px per ms
 
@@ -33,6 +43,16 @@ export class HallScene extends Phaser.Scene {
   private pendingHero: HTMLCanvasElement | null = null;
   private emitter!: Phaser.GameObjects.Particles.ParticleEmitter;
   private sparks!: Phaser.GameObjects.Particles.ParticleEmitter;
+  private phase: Phase = 'day';
+  private washBg: Phaser.GameObjects.Rectangle | null = null;
+  private washFg: Phaser.GameObjects.Rectangle | null = null;
+  private glow: Phaser.GameObjects.Image | null = null;
+  private stars: { g: Phaser.GameObjects.Rectangle; p: number }[] = [];
+  private petScale = 1;
+  private petAura = 0; // 0 none, 1 bonded (warm), 2 elder (gold + motes)
+  private auraG: Phaser.GameObjects.Ellipse | null = null;
+  private motes!: Phaser.GameObjects.Particles.ParticleEmitter;
+  private moteT = 0;
   events2: HallEvents;
   reduced = false;
 
@@ -59,6 +79,9 @@ export class HallScene extends Phaser.Scene {
     this.sparks = this.add.particles(0, 0, 'spark', {
       speed: { min: 20, max: 60 }, lifespan: 380, quantity: 0, alpha: { start: 1, end: 0 }, emitting: false, blendMode: 'ADD',
     }).setDepth(21);
+    this.motes = this.add.particles(0, 0, 'spark', {
+      speed: { min: 4, max: 14 }, angle: { min: 250, max: 290 }, lifespan: 900, quantity: 0, alpha: { start: 0.9, end: 0 }, tint: 0xffe28a, emitting: false, blendMode: 'ADD',
+    }).setDepth(13);
     this.setPlace(this.place, true);
     if (this.pendingHero) { this.applyHero(this.pendingHero); this.pendingHero = null; }
     if (this.petId) this.setPet(this.petId, true);
@@ -75,6 +98,12 @@ export class HallScene extends Phaser.Scene {
     g.generateTexture('coin', 5, 5); g.clear();
     g.fillStyle(0xfff0c0).fillRect(1, 0, 1, 3).fillRect(0, 1, 3, 1);
     g.generateTexture('spark', 3, 3); g.destroy();
+    // a soft round glow for the lantern light (drawn once, smooth on purpose)
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const x = c.getContext('2d')!, gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,190,110,1)'); gr.addColorStop(0.45, 'rgba(255,160,80,0.45)'); gr.addColorStop(1, 'rgba(255,140,60,0)');
+    x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+    this.textures.addCanvas('glow', c);
   }
 
   get ground() { return PLACES[this.place].ground; }
@@ -87,7 +116,53 @@ export class HallScene extends Phaser.Scene {
     if (!this.sys.isActive() && !force) return;
     for (const t of this.tiles) t.destroy();
     this.tiles = PLACES[id].layers.map((l, i) => this.add.tileSprite(0, 0, this.W, VIEW_H, 'bg:' + l.key).setOrigin(0, 0).setDepth(i - 20));
+    this.buildSky();
     this.layout();
+  }
+
+  setPhase(p: Phase) {
+    if (p === this.phase && this.washBg) return;
+    this.phase = p;
+    if (this.hero) this.buildSky();
+  }
+
+  private buildSky() {
+    this.washBg?.destroy(); this.washFg?.destroy(); this.glow?.destroy();
+    for (const s of this.stars) s.g.destroy();
+    this.stars = [];
+    const w = WASH[this.phase];
+    // the wash sits on top of every backdrop layer but under the characters
+    this.washBg = this.add.rectangle(0, 0, this.W, VIEW_H, w.bg).setOrigin(0, 0).setDepth(-1).setBlendMode(Phaser.BlendModes.MULTIPLY).setVisible(w.bg !== 0xffffff);
+    this.washFg = this.add.rectangle(0, 0, this.W, VIEW_H, w.fg).setOrigin(0, 0).setDepth(30).setBlendMode(Phaser.BlendModes.MULTIPLY).setVisible(w.fg !== 0xffffff);
+    if (w.stars > 0) {
+      // stars just above the farthest layer, so hills and trees cover them
+      let seed = 7;
+      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+      const n = Math.round((this.W / 6) * w.stars);
+      for (let i = 0; i < n; i++) {
+        const big = rnd() < 0.12;
+        const g = this.add.rectangle(Math.floor(rnd() * this.W), 2 + Math.floor(rnd() * 46), big ? 2 : 1, big ? 2 : 1, big ? 0xfff6d8 : 0xdfe6ff).setOrigin(0, 0).setDepth(-0.5);
+        this.stars.push({ g, p: rnd() * 6.28 });
+      }
+    }
+    if (w.glow > 0) this.glow = this.add.image(0, 0, 'glow').setDisplaySize(120, 84).setAlpha(w.glow).setDepth(31).setBlendMode(Phaser.BlendModes.ADD);
+    this.layout();
+  }
+
+  setPetStage(scale: number, aura: number) {
+    this.petScale = scale; this.petAura = aura;
+    if (this.pet) this.pet.setScale(scale);
+    this.auraG?.destroy(); this.auraG = null;
+    if (aura > 0 && this.hero) this.auraG = this.add.ellipse(0, 0, 30, 14, aura > 1 ? 0xffd860 : 0xff9a70, aura > 1 ? 0.32 : 0.2).setDepth(7).setBlendMode(Phaser.BlendModes.ADD);
+  }
+
+  /** The familiar grew up: a burst of light. */
+  evolveFx() {
+    if (!this.pet || this.reduced) return;
+    const c = this.pet.getCenter();
+    this.sparks.explode(24, c.x, c.y);
+    this.motes.explode(16, c.x, c.y);
+    this.petHop = 420;
   }
 
   resize(W: number) {
@@ -101,6 +176,8 @@ export class HallScene extends Phaser.Scene {
     const gy = this.ground;
     this.hero.setPosition(this.heroX, gy - 62);
     this.heroShadow.setPosition(this.heroX + 31, gy);
+    this.washBg?.setSize(this.W, VIEW_H); this.washFg?.setSize(this.W, VIEW_H);
+    this.glow?.setPosition(this.heroX + 32, gy - 26);
     if (this.boss && this.bossId) this.placeBoss();
   }
 
@@ -127,7 +204,8 @@ export class HallScene extends Phaser.Scene {
     this.pet?.destroy();
     const a = PET_ART[id];
     if (!a) { this.pet = null; return; }
-    this.pet = this.add.sprite(0, 0, 'pet:' + id, a.walk[0]).setOrigin(0, 0).setDepth(a.fly ? 12 : 8);
+    this.pet = this.add.sprite(0, 0, 'pet:' + id, a.walk[0]).setOrigin(0, 0).setDepth(a.fly ? 12 : 8).setScale(this.petScale);
+    if (this.petAura && !this.auraG) this.setPetStage(this.petScale, this.petAura);
     this.pet.setInteractive({ useHandCursor: true });
     this.pet.on('pointerdown', () => { this.petHop = 420; this.events2.tapPet(); });
     this.petShadow.setVisible(true).setSize(Math.max(6, Math.round(a.w * 0.5)), 3);
@@ -140,15 +218,17 @@ export class HallScene extends Phaser.Scene {
     if (!id) { if (this.boss && this.bossDying < 0) { this.boss.destroy(); this.boss = null; } return; }
     this.boss?.destroy();
     this.bossDying = -1;
-    this.boss = this.add.sprite(0, 0, 'boss:' + id, 0).setOrigin(0, 0).setDepth(9);
+    if (!BOSS_ART[id]) { this.boss = null; return; }
+    this.boss = this.add.sprite(0, 0, 'boss:' + id, BOSS_ART[id].walk[0]).setOrigin(0, 0).setDepth(9).setAlpha(1).setScale(1);
     this.placeBoss();
   }
 
   private placeBoss() {
     if (!this.boss || !this.bossId) return;
     const a = BOSS_ART[this.bossId];
+    if (!a) return;
     const s = this.boss.scaleX;
-    this.boss.setPosition(this.W - Math.round(a.w * s) - 6, this.ground - Math.round(a.foot * s) + (this.bossId === 'slime' ? 0 : 2));
+    this.boss.setPosition(this.W - Math.round(a.w * s) - 6, this.ground - Math.round(a.foot * s) + (a.dy || 0));
   }
 
   /** A keep: coins from the hero, and a strike on the foe if there is one. */
@@ -204,22 +284,34 @@ export class HallScene extends Phaser.Scene {
       if (this.pet.frame.name !== String(fi)) this.pet.setFrame(fi);
       let hop = 0;
       if (this.petHop > 0) { this.petHop -= dt; const p = 1 - this.petHop / 420; hop = Math.round(Math.sin(Math.PI * Math.min(1, p)) * 9); }
-      const px = a.fly ? this.heroX + 4 : this.heroX - a.w + (a.w > 40 ? 22 : 16);
-      const py = a.fly ? this.ground - 66 + Math.round(Math.sin(this.t / 260) * 2) : this.ground - a.foot;
+      const sc = this.petScale;
+      const px = a.fly ? this.heroX + 4 : this.heroX - Math.round(a.w * sc) + (a.w > 40 ? 22 : 16);
+      const py = a.fly ? this.ground - 66 + Math.round(Math.sin(this.t / 260) * 2) : this.ground - Math.round(a.foot * sc);
       this.pet.setPosition(px, py - hop);
+      if (this.auraG) {
+        this.auraG.setPosition(px + (a.w * sc) / 2, a.fly ? py + a.h * sc * 0.6 : this.ground - 3);
+        this.auraG.setAlpha((this.petAura > 1 ? 0.3 : 0.18) + Math.sin(this.t / 400) * 0.06);
+        if (this.petAura > 1 && !this.reduced && (this.moteT -= dt) <= 0) { this.moteT = 520; this.motes.explode(1, px + Math.random() * a.w * sc, py + Math.random() * a.h * sc * 0.6); }
+      }
       this.petShadow.setPosition(px + a.w / 2 + (a.fly ? 0 : 0), this.ground + (a.fly ? 0 : 0)).setAlpha(a.fly ? 0.12 : 0.25);
     }
+    // stars twinkle
+    if (this.stars.length && !this.reduced) for (const s of this.stars) s.g.setAlpha(0.55 + 0.45 * Math.sin(this.t / 700 + s.p));
     // foe
     if (this.boss && this.bossId) {
       const a = BOSS_ART[this.bossId];
       if (this.bossDying >= 0) {
         this.bossDying += dt;
-        const f = this.bossId === 'slime' ? a.row.death * 10 + Math.min(9, Math.floor(this.bossDying / 90)) : 8 + Math.min(3, Math.floor(this.bossDying / 140));
-        this.boss.setFrame(f);
+        if (a.death.length) this.boss.setFrame(a.death[Math.min(a.death.length - 1, Math.floor(this.bossDying / a.deathMs))]);
+        else { // no death frames: it wilts
+          const p = Math.min(1, this.bossDying / 900);
+          this.boss.setScale(1, 1 - 0.55 * p);
+          this.boss.y = this.ground - Math.round(a.foot * (1 - 0.55 * p)) + (a.dy || 0);
+        }
         if (this.bossDying > 1100) { this.boss.setAlpha(Math.max(0, 1 - (this.bossDying - 1100) / 500)); }
         if (this.bossDying > 1600) { this.boss.destroy(); this.boss = null; this.bossDying = -1; this.bossId = null; }
       } else {
-        const f = this.bossId === 'slime' ? a.row.walk * 10 + (Math.floor(this.t / a.ms) % 10) : a.walk[Math.floor(this.t / a.ms) % 4];
+        const f = a.walk[Math.floor(this.t / a.ms) % a.walk.length];
         if (this.boss.frame.name !== String(f)) this.boss.setFrame(f);
         if (this.bossFlash > 0) { this.bossFlash -= dt; this.boss.setTintFill(0xffffff); } else this.boss.clearTint();
       }

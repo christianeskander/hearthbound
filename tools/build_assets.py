@@ -283,3 +283,23 @@ def build_locations():
 
 if __name__ == '__main__':
     build_locations()
+
+# ---------------------------------------------------------------- v2 foes
+def build_bosses_v2():
+    """The four v2 foes. Slimes: Calciumtrice (CC-BY 3.0), blue rows 5-9 and red rows
+    10-14 of the same sheet as the Slime of Later. Mushroom walker (fly amanita) and the
+    black bear: LPC animals 2022, Sevarihk & tapatilorenzo (CC-BY 4.0)."""
+    slime = Image.open(fetch(OGA + 'slime%20spritesheet%20calciumtrice_0.png', 'oga_slime_calciumtrice.png')).convert('RGBA')
+    save(scale2x(clean(slime.crop((0, 160, 320, 320)), True)), 'bosses/drift.png')  # blue
+    save(scale2x(clean(slime.crop((0, 320, 320, 480)), True)), 'bosses/gleam.png')  # red
+    animals = OGA + 'lpc_animals_2022_v1.1.zip'
+    mush = from_zip('oga_lpc_animals_2022.zip', animals, 'individual creature spritesheets/mushroom walker, fly amanita (Sevarihk).png')
+    save(scale2x(clean(cells(mush, 32, 32, 1, [0, 1, 2, 3]), True)), 'bosses/maybe.png')  # walk left, 4 frames, 64px
+    bear = from_zip('oga_lpc_animals_2022.zip', animals, 'individual creature spritesheets/bear, black.png')
+    walk = cells(clean(bear, True), 64, 64, 2, [0, 1, 2, 3, 4])
+    die = cells(clean(bear, True), 64, 64, 10, [0, 1, 2, 3])
+    both = Image.new('RGBA', (64 * 9, 64)); both.paste(walk, (0, 0)); both.paste(die, (320, 0))
+    save(both, 'bosses/weight.png')  # walk 0-4, lie down 5-8
+
+if __name__ == '__main__':
+    build_bosses_v2()

@@ -61,7 +61,9 @@ export function weekReport(s: Save, week: DayKey): WeekReport {
   const foes = s.bossLog.filter((b) => b.won && b.end && b.end >= week && b.end <= keys[6]).map((b) => b.name);
   const chores = s.chores.filter((c) => c.beatenAt && dayOfT(s, c.beatenAt) >= week && dayOfT(s, c.beatenAt) <= keys[6]).map((c) => c.name);
   const rested = days.filter((d) => d.paused).length;
-  const grade = gradeOf(kept, due);
+  // nothing was due (tiny-wins heroes): grade the days you showed up instead
+  const active = days.filter((x) => x.keeps > 0).length;
+  const grade = due > 0 ? gradeOf(kept, due) : active === 0 ? 'resting' : active >= 6 ? 'blazing' : active >= 4 ? 'bright' : active >= 2 ? 'warm' : 'kindling';
 
   const prev = keys.map((k) => addDays(k, -7)).reduce((a, k) => a + (s.history[k]?.keeps ?? 0), 0);
   const more = keeps > prev && prev > 0 ? keeps - prev : null;
@@ -80,6 +82,7 @@ function dayOfT(s: Save, t: number): DayKey {
 }
 
 export function messageFor(g: Grade, keeps: number, rested: number, due: number): string {
+  if (due === 0 && keeps > 0) return g === 'blazing' || g === 'bright' ? `${keeps} tiny wins, nearly every day. That is a lot of small kindness to yourself.` : `${keeps} tiny wins this week. Every one of them counts.`;
   if (g === 'resting') return rested ? 'A resting week. Rest is part of it; the fire kept itself warm.' : keeps ? `${keeps} keeps, and nothing was due. Every one of them was a bonus.` : 'A quiet week. The hearth is still here whenever you are.';
   if (g === 'blazing') return 'A blazing week. Whatever you did, it worked. Do the same small things again.';
   if (g === 'bright') return 'A bright week. Most of what you promised, you kept.';

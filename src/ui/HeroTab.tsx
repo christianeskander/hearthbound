@@ -1,11 +1,15 @@
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { CALLINGS, GEAR, PERKS, STATS, STAT_IDS, familiarById } from '../engine/content';
 import { canLearn, equip, learnPerk, maxHp, mods, statRank } from '../engine/rules';
-import { exportSave, importSave } from '../engine/save';
+import { exportFamily, exportSave, importBundle } from '../engine/save';
 import type { Save, Slot } from '../engine/types';
 import { HAIRS, HAIR_COLORS, SKINS, SKIN_NAMES } from '../art/look';
 import { RAMPS } from '../art/palettes';
-import { act, replaceSave, toast } from './store';
+import { act, allHeroes, getFamily, openSheet, replaceSave, restoreFamily, toast } from './store';
+import { getPrefs, onPrefs, setPrefs } from './prefs';
+import { askPermission, googleCalLink, icsFile, isIOS, isStandalone, periodicSyncSupported, permission, planReminders, testReminder, triggersSupported } from './reminders';
+import { badgeSupported, refreshBadge } from './badge';
+import { stageOf, nextStage, bondOf } from '../engine/pets';
 import { Stage } from './Stage';
 import { Sheet } from './Sheet';
 import { useWidth } from './Create';
@@ -32,7 +36,8 @@ export function HeroTab({ s }: { s: Save }) {
           <div><h2>{h.name}</h2><p class="dim">Level {h.level} {calling.name} · walks with {fam.name}, {fam.kind}</p></div>
           <button class="secondary small" onClick={() => setLookOpen(true)}>Change look</button>
         </div>
-        <p class="dim">{calling.perk}. {fam.gift}.</p>
+        <p class="dim">{calling.perk}. {fam.gift}{stageOf(s, h.familiar).gift > 1 ? ` (×${stageOf(s, h.familiar).gift} at ${stageOf(s, h.familiar).name})` : ''}.</p>
+        <FamiliarGrowth s={s} />
         {h.titles.length > 0 && (
           <label class="field">Title
             <select value={h.title || ''} onChange={(e) => act('Title', (x) => { x.hero.title = (e.target as HTMLSelectElement).value || null; })}>
@@ -144,34 +149,116 @@ function LookSheet({ s, onClose }: { s: Save; onClose: () => void }) {
   );
 }
 
+function download(file: File) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(file);
+  a.download = file.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+const stamp = () => new Date().toISOString().slice(0, 10);
+function familyFile() {
+  const heroes = allHeroes();
+  return new File([exportFamily(heroes)], `hearthbound-backup-${stamp()}.json`, { type: 'application/json' });
+}
+const canShareFiles = (f: File) => { try { return !!navigator.canShare?.({ files: [f] }); } catch { return false; } };
+
 function Settings({ s }: { s: Save }) {
   const file = useRef<HTMLInputElement>(null);
-  const doExport = () => {
-    const blob = new Blob([exportSave(s)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `hearthbound-${s.hero.name.replace(/\W+/g, '-').toLowerCase()}-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    toast('Saga exported. Keep the file somewhere safe.', 'good');
+  const [prefs, setP] = useState(getPrefs());
+  useEffect(() => onPrefs(() => setP(getPrefs())), []);
+  const [perm, setPerm] = useState(permission());
+  const [psync, setPsync] = useState<boolean | null>(null);
+  useEffect(() => { periodicSyncSupported().then(setPsync); }, []);
+  const ios = isIOS(), standalone = isStandalone();
+  const backup = () => { download(familyFile()); setPrefs({ lastBackupAt: Date.now() }); toast('Backup saved. Keep it in Files, Drive or iCloud.', 'good'); };
+  const share = async () => {
+    const f = familyFile();
+    if (!canShareFiles(f)) { download(f); toast('Sharing files is not available here, so the backup was downloaded instead.', 'info', false, 6000); return; }
+    try { await navigator.share({ files: [f], title: 'Hearthbound backup', text: 'Hearthbound backup file. Open Hearthbound and use Restore to load it.' }); setPrefs({ lastBackupAt: Date.now() }); toast('Backup shared.', 'good'); }
+    catch (e) { if ((e as Error).name !== 'AbortError') toast('Could not share. Try Back up instead.', 'bad'); }
   };
+  const reminder = (p: Partial<Save['settings']['reminder']>) => { act('Reminder', (x) => { x.settings.reminder = { ...x.settings.reminder, ...p }; }); planReminders(); };
+  const turnOn = async () => {
+    let p = permission();
+    if (p === 'default') p = await askPermission();
+    setPerm(p);
+    reminder({ on: true });
+    if (p === 'granted') toast(`Reminder set for ${s.settings.reminder.time}.`, 'good');
+    else toast('Notifications are not allowed here. The calendar reminder below works anywhere.', 'info', false, 6000);
+  };
+  const icsShare = async () => {
+    const f = icsFile(s);
+    if (canShareFiles(f) && ios) { try { await navigator.share({ files: [f], title: 'Hearthbound reminder' }); return; } catch (e) { if ((e as Error).name === 'AbortError') return; } }
+    download(f);
+    toast(ios ? 'Calendar file saved. Tap it in Downloads (Files) and choose Add to Calendar.' : 'Calendar file saved. Open it to add the daily reminder.', 'good', false, 7000);
+  };
+  const last = prefs.lastBackupAt ? new Date(prefs.lastBackupAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : 'never';
+  const fam = getFamily();
   return (
-    <div class="card">
-      <div class="kicker">Settings & ledger</div>
-      <label class="field">The day turns at
-        <select value={s.settings.dayStart} onChange={(e) => act('Day turn', (x) => { x.settings.dayStart = Number((e.target as HTMLSelectElement).value); })}>
-          {[0, 1, 2, 3, 4, 5, 6].map((hh) => <option key={hh} value={hh}>{hh === 0 ? 'Midnight' : `${hh}:00am`}</option>)}
-        </select>
-      </label>
-      <label class="check"><input type="checkbox" checked={s.settings.sound} onChange={(e) => act('Sound', (x) => { x.settings.sound = (e.target as HTMLInputElement).checked; })} /> Sounds on keeps</label>
-      <p class="hint">Your saga lives only on this device, with a backup copy beside it. Export a file now and then, so a new phone can pick it up.</p>
-      <div class="row">
-        <button class="secondary" onClick={doExport}>Export saga</button>
-        <button class="secondary" onClick={() => file.current?.click()}>Import saga</button>
-        <input ref={file} type="file" accept="application/json,.json" hidden onChange={(e) => importFile(e, s.hero.name)} />
+    <>
+      <div class="card">
+        <div class="kicker">Family <span class="count">{fam.members.length} hero{fam.members.length === 1 ? '' : 'es'}</span></div>
+        <p class="dim small">{fam.members.map((m) => m.name).join(' · ')}</p>
+        <div class="row"><button class="secondary" onClick={() => openSheet('family')}>Switch or add a hero</button></div>
       </div>
-      <div class="row"><button class="danger ghost small" onClick={() => { if (confirm('Start a new life? This hero is replaced (a backup copy is kept). Export first if you want them back.')) { replaceSave(null); } }}>Start a new life</button></div>
-    </div>
+
+      <div class="card">
+        <div class="kicker">Sound</div>
+        <label class="check"><input type="checkbox" checked={!prefs.muted} onChange={(e) => setPrefs({ muted: !(e.target as HTMLInputElement).checked })} /> Sound on</label>
+        <label class="field">Effects volume<input type="range" min={0} max={1} step={0.05} value={prefs.sfx} onInput={(e) => setPrefs({ sfx: Number((e.target as HTMLInputElement).value) })} /></label>
+        <label class="check"><input type="checkbox" checked={prefs.musicOn} onChange={(e) => setPrefs({ musicOn: (e.target as HTMLInputElement).checked })} /> Calm music</label>
+        <label class="field">Music volume<input type="range" min={0} max={1} step={0.05} value={prefs.music} disabled={!prefs.musicOn} onInput={(e) => setPrefs({ music: Number((e.target as HTMLInputElement).value) })} /></label>
+        <p class="hint">All sound is made on the phone (no files). Music starts after your first tap and pauses when the app is in the background. The 🔊 chip on the Hall mutes everything.</p>
+      </div>
+
+      <div class="card">
+        <div class="kicker">Daily reminder</div>
+        <div class="row">
+          <label class="field inline">Time<input type="time" value={s.settings.reminder.time} onChange={(e) => reminder({ time: (e.target as HTMLInputElement).value || '19:00' })} /></label>
+          {s.settings.reminder.on ? <button class="secondary" onClick={() => reminder({ on: false })}>Turn off</button> : <button class="primary" onClick={turnOn}>Turn on</button>}
+        </div>
+        <p class="small">Status: {perm === 'unsupported' ? (ios && !standalone ? 'notifications need the app on your Home Screen first (Share → Add to Home Screen).' : 'this browser cannot show notifications.') : perm === 'granted' ? (s.settings.reminder.on ? `on, at ${s.settings.reminder.time}.` : 'allowed, but off.') : perm === 'denied' ? 'notifications are blocked in your settings.' : 'not asked yet.'}</p>
+        {perm === 'granted' && <button class="link" onClick={() => testReminder()}>Send a test reminder</button>}
+        <p class="hint">Honest note: a web app cannot wake itself up on a schedule. The reminder above fires while Hearthbound is open or recently used{psync ? '; this browser also lets it check in now and then in the background (timing is up to the browser)' : ''}{triggersSupported() ? '; this browser can also schedule it ahead' : ''}. For a reminder that always fires, even with the app closed, add it to your calendar:</p>
+        <div class="row">
+          <button class="secondary" onClick={icsShare}>Add to calendar (.ics)</button>
+          <a class="secondary btnlink" href={googleCalLink(s)} target="_blank" rel="noopener">Google Calendar</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="kicker">App icon badge</div>
+        <div class="pills">
+          {(['dailies', 'streak', 'off'] as const).map((m) => <button key={m} class={prefs.badge === m ? 'pill on' : 'pill'} aria-pressed={prefs.badge === m} onClick={() => { setPrefs({ badge: m }); refreshBadge(); }}>{m === 'dailies' ? 'Dailies left' : m === 'streak' ? 'Streak' : 'Off'}</button>)}
+        </div>
+        <p class="hint">{badgeSupported() ? (ios ? 'Shows on the Home Screen icon once notifications are allowed.' : 'Shows on the installed app icon.') : 'This browser does not support icon badges (Android Chrome does not; iPhone needs the Home Screen app with notifications allowed).'}</p>
+      </div>
+
+      <div class="card">
+        <div class="kicker">Backup <span class="count">last: {last}</span></div>
+        <p class="hint">Everything lives only on this phone. A backup is one small file with every hero in it. Save it to Files, iCloud Drive or Google Drive, or send it to yourself. No account, nothing uploaded by us.</p>
+        <div class="row">
+          <button class="primary" onClick={backup}>Back up</button>
+          <button class="secondary" onClick={share}>Share…</button>
+          <button class="secondary" onClick={() => file.current?.click()}>Restore</button>
+          <input ref={file} type="file" accept="application/json,.json" hidden onChange={(e) => importFile(e, s.hero.name)} />
+        </div>
+        <button class="link" onClick={() => { const f = new File([exportSave(s)], `hearthbound-${s.hero.name.replace(/\W+/g, '-').toLowerCase()}-${stamp()}.json`, { type: 'application/json' }); download(f); }}>Back up only {s.hero.name}</button>
+      </div>
+
+      <div class="card">
+        <div class="kicker">Game</div>
+        <label class="field">The day turns at
+          <select value={s.settings.dayStart} onChange={(e) => act('Day turn', (x) => { x.settings.dayStart = Number((e.target as HTMLSelectElement).value); })}>
+            {[0, 1, 2, 3, 4, 5, 6].map((hh) => <option key={hh} value={hh}>{hh === 0 ? 'Midnight' : `${hh}:00am`}</option>)}
+          </select>
+        </label>
+        {s.mode !== 'kid' && <label class="check"><input type="checkbox" checked={s.settings.noPenalty} onChange={(e) => act('Gentle mode', (x) => { x.settings.noPenalty = (e.target as HTMLInputElement).checked; })} /> Gentle mode: misses and slips never cost anything</label>}
+        <div class="row"><button class="secondary" onClick={() => openSheet('rest')}>Rest days (sick, away)</button></div>
+        <div class="row"><button class="danger ghost small" onClick={() => { if (confirm(`Start a new life for this hero? ${s.hero.name} is replaced (a backup copy is kept). Back up first if you want them back.`)) { replaceSave(null); } }}>Start a new life</button></div>
+      </div>
+    </>
   );
 }
 
@@ -181,11 +268,29 @@ export async function importFile(e: Event, current?: string) {
   input.value = '';
   if (!f) return;
   try {
-    const save = importSave(await f.text());
+    const b = importBundle(await f.text());
+    if (b.kind === 'family') {
+      const names = b.heroes.map((h) => `${h.save.hero.name} (level ${h.save.hero.level})`).join(', ');
+      if (!confirm(`Restore ${b.heroes.length} hero${b.heroes.length > 1 ? 'es' : ''} from this backup: ${names}? Heroes with the same place on this phone are replaced (their old copy is kept as a backup).`)) return;
+      restoreFamily(b.heroes);
+      toast('Backup restored. Welcome back.', 'good');
+      return;
+    }
+    const save = b.save;
     const ok = !current || confirm(`Replace ${current} with ${save.hero.name} (level ${save.hero.level}) from this file? The current saga is kept as the backup copy.`);
     if (ok) { replaceSave(save); toast(`Welcome back, ${save.hero.name}.`, 'good'); }
   } catch (err) {
-    toast(`Could not import: ${(err as Error).message} Nothing was changed.`, 'bad');
+    toast(`Could not restore: ${(err as Error).message} Nothing was changed.`, 'bad');
   }
 }
 
+function FamiliarGrowth({ s }: { s: Save }) {
+  const id = s.hero.familiar, st = stageOf(s, id), nx = nextStage(s, id), b = bondOf(s, id);
+  const fam = familiarById(id)!;
+  return (
+    <div class="growth">
+      <div class="stages">{['Young', 'Grown', 'Bonded', 'Elder'].map((n, i) => <span key={n} class={i <= st.id ? 'on' : ''}>{n}</span>)}</div>
+      {nx ? <><div class="bar thin"><i style={{ width: `${(100 * (b - st.at)) / (nx.at - st.at)}%` }} /></div><p class="dim small">{fam.name} is {st.name}: {st.text} {nx.at - b} more keeps (or daily pats in the hall) until {nx.name}.</p></> : <p class="dim small">{fam.name} is an Elder: {st.text}</p>}
+    </div>
+  );
+}

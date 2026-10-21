@@ -12,6 +12,17 @@ const ICONS: Record<string, string[]> = {
   flame: ['...K....', '..KOK...', '..KOOK..', '.KOYOK..', '.KOYYOK.', 'KOYWYOK.', 'KOYYYOK.', '.KKKKK..'],
   scroll: ['.KKKKKK.', 'KWWWWWWK', '.KSSSSK.', '.KWWWWK.', '.KSSSSK.', '.KWWWWK.', 'KWWWWWWK', '.KKKKKK.'],
   moon: ['..KKK...', '.KPPK...', 'KPPK....', 'KPPK....', 'KPPK....', 'KPPPK...', '.KPPPKK.', '..KKKK..'],
+  star: ['...KK...', '...KYK..', 'KKKYYKKK', 'KYYWYYYK', '.KYYYYK.', '..KYYK..', '.KYKKYK.', '.KK..KK.'],
+  crown: ['........', 'K..K..K.', 'KKKYKKYK', 'KYYWYYYK', 'KYRYYBYK', 'KYYYYYYK', 'KKKKKKKK', '........'],
+  check: ['........', '......KK', '.....KGK', 'KK..KGK.', 'KGKKGK..', '.KGGK...', '..KK....', '........'],
+  sun: ['...KK...', '.K.YY.K.', '..KYYK..', 'KYYWYYYK', 'KYYYYYYK', '..KYYK..', '.K.YY.K.', '...KK...'],
+  shield: ['KKKKKKKK', 'KSWSSSDK', 'KSSBBSDK', 'KSBBBBDK', '.KSBBDK.', '.KSSSDK.', '..KSDK..', '...KK...'],
+  clock: ['..KKKK..', '.KWWWWK.', 'KWWKWWWK', 'KWWKWWWK', 'KWWKKKWK', 'KWWWWWWK', '.KWWWWK.', '..KKKK..'],
+  paw: ['.KK..KK.', 'KOOK.KOK', '.KK..KK.', 'KK.KK.KK', 'KOKOOKOK', '.KOOOOK.', '.KOOOOK.', '..KKKK..'],
+  book: ['KKKKKKK.', 'KRRRRRWK', 'KRYYRRWK', 'KRRRRRWK', 'KRRRRRWK', 'KRRRRRWK', 'KKKKKKWK', '.KKKKKKK'],
+  chart: ['K.......', 'K.....G.', 'K....GG.', 'K.Y..GG.', 'K.YB.GG.', 'K.YB.GG.', 'K.YBBGG.', 'KKKKKKKK'],
+  bell: ['...KK...', '..KYYK..', '.KYWYYK.', '.KYYYYK.', '.KYYYYK.', 'KYYYYYYK', 'KKKKKKKK', '...KK...'],
+  people: ['.KK..KK.', 'KOOKKBBK', 'KOOKKBBK', '.KK..KK.', 'KOOKKBBK', 'KOOOKBBK', 'KOOKKBBK', 'KKKKKKKK'],
 };
 export function Icon({ name, size = 16, title }: { name: keyof typeof ICONS | string; size?: number; title?: string }) {
   const rows = ICONS[name] || ICONS.coin;

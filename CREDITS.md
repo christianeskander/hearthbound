@@ -94,6 +94,10 @@ generator credits its face layers.
 |---|---|---|---|---|
 | `bosses/slime.png` (The Slime of Later) | "Animated Slime" — <https://opengameart.org/content/animated-slime> | Calciumtrice | CC-BY 3.0 | Green rows only; doubled with the Scale2x pixel-art algorithm so it is boss-sized on the same pixel grid as the hero |
 | `bosses/rat.png` (The Gnawing Doubt) | LPC animals 2022 pack, `giant rat (Sevarihk).png` — <https://opengameart.org/content/lpc-bears-deer-lions-and-more> | Sevarihk (in tapatilorenzo's pack) | CC-BY 4.0 (attribution required) | Walk / attack / die frames cut into a strip |
+| `bosses/drift.png` (The Drift) | "Animated Slime" (blue rows) — <https://opengameart.org/content/animated-slime> | Calciumtrice | CC-BY 3.0 | Blue rows only; Scale2x |
+| `bosses/gleam.png` (The Gleam of Perfect) | same sheet (red rows) | Calciumtrice | CC-BY 3.0 | Red rows only; Scale2x |
+| `bosses/maybe.png` (The Mushroom of Maybe) | LPC animals 2022 pack, `mushroom walker, fly amanita (Sevarihk).png` — <https://opengameart.org/content/lpc-bears-deer-lions-and-more> | Sevarihk (in tapatilorenzo's pack) | CC-BY 4.0 | Walk row cut out; Scale2x |
+| `bosses/weight.png` (The Weight of Everything) | same pack, `bear, black.png` | tapatilorenzo | CC-BY 4.0 | Walk and lie-down frames cut into one strip |
 
 ## Places (all by Luis Zuno, "ansimuz", all CC0)
 
@@ -107,8 +111,14 @@ generator credits its face layers.
 
 ## Icons
 
-`public/icons/icon-192.png` and `icon-512.png` are drawn by `tools/make_icons.py`
-from the LPC hero layers above (same credits and licences).
+`public/icons/*` (app icons, maskable icons, Apple touch icon, favicon, shortcut
+icons and the notification badge) are drawn by `tools/make_icons.py` from the LPC
+hero layers above and from the game's own hand-made pixel icons in
+`src/ui/icons.tsx` (same credits and licences; the pixel icons are original to
+this project).
+
+The emoji on kid and tiny-win cards are the phone's own emoji font; no emoji
+images are shipped.
 
 ## Code and libraries
 
@@ -116,4 +126,8 @@ from the LPC hero layers above (same credits and licences).
 - Preact (MIT) — <https://preactjs.com>
 - Built with Vite and TypeScript (MIT / Apache-2.0); tests with Vitest (MIT) and Playwright (Apache-2.0).
 
-Sounds are synthesised in the browser with the Web Audio API; there are no sound files.
+Sounds and the calm music are synthesised live in the browser with the Web Audio API
+(original to this project); there are no sound or music files.
+
+No code from Habitica (GPL) or any other habit app was used; the game rules,
+story and texts are original.

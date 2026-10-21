@@ -253,7 +253,7 @@ describe('rest days (vacation / sick)', () => {
   it('gentle heroes start with tiny one-tap wins', () => {
     const s = fresh(T(2026, 10, 21, 9), 'gentle');
     expect(s.oaths.every((o) => o.kind === 'habit' && o.up && !o.down && o.difficulty === 'trivial')).toBe(true);
-    const r = tapHabit(s, s.oaths[0].id, 1, T(2026, 10, 21, 9), never);
+    const r = tapHabit(s, s.oaths[0].id, 1, T(2026, 10, 21, 9), never) as any;
     expect(r.payout.gold).toBeGreaterThan(0);
   });
 });
@@ -329,14 +329,14 @@ describe('reminders file, family, phases', () => {
     if (b.kind === 'family') expect(b.heroes.map((h) => h.save.mode)).toEqual(['standard', 'kid']);
   });
   it('dawn, day, dusk, night', () => {
-    expect([5, 9, 18, 22, 2].map(phaseOf)).toEqual(['dawn', 'day', 'dusk', 'night', 'night']);
+    expect([5, 9, 18, 22, 2].map((h) => phaseOf(h))).toEqual(['dawn', 'day', 'dusk', 'night', 'night']);
   });
   it('focus and errands feed history', () => {
     const d = T(2026, 10, 21, 9); const s = fresh(d);
     const t = addOath(s, { kind: 'todo', title: 'Post', difficulty: 'easy', stat: 'craft' }, d, never);
     completeTodo(s, t.id, d, never);
     startFocus(s, 25, d);
-    finishFocus(s, d + 25 * 60000, never);
+    finishFocus(s, d + 25 * 60000);
     expect(s.history['2026-10-21'].focus).toBe(25);
     expect(s.history['2026-10-21'].keeps).toBe(1);
     expect(s.stats.todos).toBe(1);

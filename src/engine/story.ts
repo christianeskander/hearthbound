@@ -1,7 +1,7 @@
 // The story: "The Cold Hearth", a short questline in eight chapters. Each opens at a
 // level, asks for things you already do in real life (keep dailies, train a stat,
 // finish errands, beat a foe), and pays a reward when you claim it.
-import { MAX_EMBERS } from './content';
+import { MATERIALS, MAX_EMBERS } from './content';
 import { earnGold } from './ledger';
 import { award, chronicle, gainXp } from './rules';
 import type { Material, Save, Stat } from './types';
@@ -108,7 +108,7 @@ export function rewardLine(r: ChapterReward): string {
   if (r.gold) b.push(`${r.gold} gold`);
   if (r.xp) b.push(`${r.xp} XP`);
   if (r.embers) b.push(`${r.embers} ember token`);
-  if (r.mats) b.push(Object.entries(r.mats).map(([k, v]) => `${v} ${k}`).join(', '));
+  if (r.mats) b.push(Object.entries(r.mats).map(([k, v]) => `${v}× ${MATERIALS[k as Material]?.name || k}`).join(', '));
   if (r.title) b.push(`the title "${r.title}"`);
   if (r.gear) b.push('the Storyteller\'s Cloak');
   return b.join(' · ');

@@ -49,7 +49,14 @@ export const PET_ART: Record<string, SpriteInfo> = {
   pip: { file: 'pets/pip.png', n: 3, w: 16, h: 16, walk: [0, 1, 2], ms: 90, foot: 14 },
   inkling: { file: 'pets/inkling.png', n: 6, w: 32, h: 32, walk: [0, 1, 2, 1], ms: 120, foot: 23, fly: true, idle: 3 },
 };
-export const BOSS_ART: Record<string, SpriteInfo & { row: Record<string, number>; frames: number }> = {
-  slime: { file: 'bosses/slime.png', n: 50, w: 64, h: 64, walk: [], ms: 110, foot: 64, row: { idle: 0, gesture: 1, walk: 2, attack: 3, death: 4 }, frames: 10 },
-  rat: { file: 'bosses/rat.png', n: 12, w: 80, h: 64, walk: [0, 1, 2, 3], ms: 130, foot: 56, row: {}, frames: 12 },
+export interface FoeArt { file: string; w: number; h: number; foot: number; ms: number; walk: number[]; death: number[]; deathMs: number; dy?: number; }
+export const BOSS_ART: Record<string, FoeArt> = {
+  slime: { file: 'bosses/slime.png', w: 64, h: 64, foot: 64, ms: 110, walk: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29], death: [40, 41, 42, 43, 44, 45, 46, 47, 48, 49], deathMs: 90 },
+  rat: { file: 'bosses/rat.png', w: 80, h: 64, foot: 56, ms: 130, walk: [0, 1, 2, 3], death: [8, 9, 10, 11], deathMs: 140, dy: 2 },
+  drift: { file: 'bosses/drift.png', w: 64, h: 64, foot: 64, ms: 120, walk: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29], death: [40, 41, 42, 43, 44, 45, 46, 47, 48, 49], deathMs: 90 },
+  maybe: { file: 'bosses/maybe.png', w: 64, h: 64, foot: 62, ms: 170, walk: [0, 1, 2, 3], death: [], deathMs: 0 },
+  gleam: { file: 'bosses/gleam.png', w: 64, h: 64, foot: 64, ms: 100, walk: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29], death: [40, 41, 42, 43, 44, 45, 46, 47, 48, 49], deathMs: 90 },
+  weight: { file: 'bosses/weight.png', w: 64, h: 64, foot: 60, ms: 170, walk: [0, 1, 2, 3, 4], death: [5, 6, 7, 8], deathMs: 180, dy: 2 },
 };
+/** First frame of each foe's walk, for little portraits in the UI. */
+export const foeThumb = (id: string) => { const a = BOSS_ART[id] || BOSS_ART.slime; return { ...a, frame: a.walk[0] }; };

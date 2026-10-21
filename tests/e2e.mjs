@@ -121,7 +121,7 @@ try {
   // 5. Reload: the save must persist
   await page.reload();
   await page.waitForSelector('.herostrip');
-  const name = await page.locator('.herostrip .who b').innerText();
+  const name = (await page.locator('.herostrip .who b').innerText()).replace('▾', '').trim();
   if (name !== 'Christian') fail('save did not persist: ' + name);
   const saved = await page.evaluate(() => !!localStorage.getItem('hearthbound.save') && !!localStorage.getItem('hearthbound.save.backup'));
   console.log('persisted after reload, backup present:', saved);

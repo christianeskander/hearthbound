@@ -1,7 +1,7 @@
 // The season pass: one theme per calendar month, a free track of ten rewards that
 // unlocks through play (sparks). Rewards are granted the moment a tier is reached,
 // so there is nothing to remember to claim.
-import { MAX_EMBERS, SEASON_THEMES, type SeasonTheme } from './content';
+import { MATERIALS, MAX_EMBERS, SEASON_THEMES, type SeasonTheme } from './content';
 import { addTitle, earnGold } from './ledger';
 import { parseKey, type DayKey } from './time';
 import type { Material, Save } from './types';
@@ -44,7 +44,7 @@ export function rewardText(r: SeasonReward, id: string): string {
   switch (r.kind) {
     case 'gold': return `${r.n} gold`;
     case 'embers': return `${r.n} ember token`;
-    case 'mats': return Object.entries(r.mats).map(([k, v]) => `${v} ${k}`).join(', ');
+    case 'mats': return Object.entries(r.mats).map(([k, v]) => `${v}× ${(MATERIALS as Record<string, { name: string }>)[k]?.name || k}`).join(', ');
     case 'title': return `Title: ${seasonTitle(id)}`;
     case 'cloak': return themeOf(id).cloak;
   }
